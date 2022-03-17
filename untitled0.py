@@ -42,3 +42,21 @@ if __name__ == "__main__":
     
     #Lov
     lov_soup, lov_property_dict, lov_name, lov_shortname = lce_law_property_gen(url)
+
+
+
+for s in sentence_property_list:
+    print('')
+    print('Now?:')
+    if input() == 'y':
+        print('')
+        print(s['parent'])
+        print(s['raw_text'])
+        
+for s in stk_internal_ref_query_list:
+    print('')
+    print('Now?:')
+    if input() == 'y':
+        print('')
+        print(s[0])
+        print(s[1])

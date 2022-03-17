@@ -18,6 +18,7 @@ import re
 
 from retsgraph import create_node
 from retsgraph import create_relation
+
 from legal_concept_resources import abbreviations
 from legal_concept_resources import lov_label_list
 from legal_concept_resources import chapter_label_list
@@ -28,8 +29,13 @@ from legal_concept_resources import nr_label_list
 from legal_concept_resources import sentence_label_list
 from legal_concept_resources import relative_stk_ref_cues
 from legal_concept_resources import internal_ref_to_whole_law_cues
+from legal_concept_resources import external_reference_cues
 
 from bs4 import BeautifulSoup as bs
+
+from danlp.models.embeddings  import load_wv_with_gensim
+
+import numpy as np
 
 #%% Create lov node
 # This function takes the url, in this case: 
@@ -47,7 +53,12 @@ def law_property_gen(url):
     lov_html = lov_json['documentHtml']
     lov_soup = bs(lov_html, 'html.parser')
     
-    lov_property_dict = {"name":lov_json["popularTitle"],
+    try:
+        lov_name = lov_json["popularTitle"]
+    except:
+        lov_name = lov_json["title"]
+    
+    lov_property_dict = {"name":lov_name,
                         "shortName":lov_json["shortName"],
                         "title":lov_json["title"],
                         "date_of_publication":lov_json["metadata"][0]["displayValue"],
@@ -73,7 +84,7 @@ def law_property_gen(url):
 
     
 
-def paragraph_sorting_raw(lov_soup):
+def _paragraph_sorting_raw(lov_soup):
     pees = lov_soup.select('p')
     p_nr = 0
     paragraphs_raw_dict_list = []
@@ -99,7 +110,8 @@ def paragraph_sorting_raw(lov_soup):
     return paragraphs_raw_dict_list
 
 
-def paragraph_property_gen(paragraphs_raw_dict_list):
+def paragraph_property_gen(lov_soup):
+    paragraphs_raw_dict_list = _paragraph_sorting_raw(lov_soup)
     paragraph_property_list = []
     chapter_property_list = []
     p_nr = 0
@@ -107,7 +119,7 @@ def paragraph_property_gen(paragraphs_raw_dict_list):
     for p_dict in paragraphs_raw_dict_list:
         p = p_dict['paragraph_content']
         p_nr +=1
-        name = p[0].find_all(attrs={"class": "ParagrafNr"})[0].string
+        name = p[0].find_all(attrs={"class": "ParagrafNr"})[0].string.replace('§ ', '§\xa0')
         if p_dict['chapter_nr']>0:
             parents = [f"Kapitel {p_dict['chapter_nr']}", lov_shortname]
             if ch_nr != p_dict['chapter_nr']:
@@ -121,20 +133,47 @@ def paragraph_property_gen(paragraphs_raw_dict_list):
         else:
             parents = [lov_shortname]
         
-        paragraph_html = ''
+        paragraph_html = []
         paragraph_raw_text = ''
         for tag in p:
-            paragraph_html += str(tag)
+            paragraph_html.append(tag)
             paragraph_raw_text += tag.text
         
-        p_property_dict = {'name': name, 
-                           'position':p_nr,
-                           'html':paragraph_html,
-                           'raw_text':paragraph_raw_text,
-                           'parent': parents
-                           }
-        
-        paragraph_property_list.append(p_property_dict)
+        if len(name) == 2:
+            bold_tag_str = p[0].find_all(attrs={"class": "Bold"})[0].string
+            if '(Udelades)' in paragraph_raw_text and '-' in bold_tag_str:
+                p_start = ''
+                p_end = ''
+                is_start = True
+                for l in bold_tag_str:
+                    if l.isnumeric() and is_start == True:
+                        p_start = p_start + l
+                    elif l == '-':
+                        is_start = False
+                    elif l.isnumeric() and is_start == False:
+                        p_end = p_end + l
+                    else:
+                        continue
+                
+                for i in range(int(p_start),int(p_end)+1):
+                    name = f'§\xa0{i}.'
+                    p_property_dict = {'name': name, 
+                                       'position':p_nr,
+                                       'html':paragraph_html,
+                                       'raw_text':paragraph_raw_text,
+                                       'parent': parents
+                                       }
+                    paragraph_property_list.append(p_property_dict)
+                    p_nr += 1
+        else: 
+            p_property_dict = {'name': name, 
+                               'position':p_nr,
+                               'html':paragraph_html,
+                               'raw_text':paragraph_raw_text,
+                               'parent': parents
+                               }
+            
+            paragraph_property_list.append(p_property_dict)
     return (paragraph_property_list, chapter_property_list)
 
 def create_chapter_node(chapter_property_list):
@@ -149,6 +188,11 @@ def create_chapter_node(chapter_property_list):
 
 def create_paragraph_node(paragraph_property_list):
     for paragraph_property_dict in paragraph_property_list:
+        html = ''
+        for tag in paragraph_property_dict['html']:
+            html = html + str(tag)
+        
+        paragraph_property_dict['html'] = html    
         create_node(paragraph_label_list, paragraph_property_dict)
         
         node1_search_query = f"name: '{paragraph_property_dict['name']}', parent: {paragraph_property_dict['parent']}"
@@ -160,12 +204,11 @@ def create_paragraph_node(paragraph_property_list):
                         lov_label_list[0],node2_search_query,'part_of')
 
 #%% Extract stk content -> generate paragraph_stk_raw_list
-def stk_sorting_raw(paragraphs_raw_dict_list):
+def _stk_sorting_raw(paragraph_property_list):
     paragraph_stk_raw_dict_list = []
-    for p_dict in paragraphs_raw_dict_list:
-        p_content = p_dict['paragraph_content']
-        p_nr = p_dict['paragraph_id']
-        ch_nr = p_dict['chapter_nr']
+    for p_dict in paragraph_property_list:
+        p_content = p_dict['html']
+        stk_parent = [p_dict['name']] + p_dict['parent']
         stk_nr = 0
         stk_in_paragraph_list = []
         for tag in p_content:
@@ -173,34 +216,26 @@ def stk_sorting_raw(paragraphs_raw_dict_list):
                 stk_nr += 1
                 stk_in_paragraph_list.append({'stk_content':[],
                                               'stk_nr': stk_nr,
-                                              'paragraph_id': p_nr,
-                                              'chapter_nr': ch_nr})
+                                              'parent': stk_parent})
             if stk_nr > 0:
                 stk_in_paragraph_list[stk_nr-1]['stk_content'].append(tag)
         paragraph_stk_raw_dict_list.append(stk_in_paragraph_list)
     
     return paragraph_stk_raw_dict_list
 
-
-def stk_property_gen(paragraph_stk_raw_dict_list):
+def stk_property_gen(paragraph_property_list):
+    paragraph_stk_raw_dict_list = _stk_sorting_raw(paragraph_property_list)
     stk_property_list = []
     for p in paragraph_stk_raw_dict_list:
-        p_name = p[0]['stk_content'][0].find_all(attrs={"class": "ParagrafNr"})[0].string
+        parents = p[0]['parent']
         
-        #stk_nr = 0
         for stk in p:
             stk_nr = stk['stk_nr']
             name = f'Stk. {stk_nr}.'
-            stk_html = ''
+            stk_html = stk['stk_content']
             stk_raw_text = ''
             for tag in stk['stk_content']:
-                stk_html += str(tag)
                 stk_raw_text += tag.text
-            
-            if stk['chapter_nr']>0:
-                parents = [p_name, f"Kapitel {stk['chapter_nr']}", lov_shortname]
-            else:
-                parents = [p_name, lov_shortname]
             
             stk_property_dict = {'name': name, 
                                  'position':stk_nr,
@@ -214,6 +249,10 @@ def stk_property_gen(paragraph_stk_raw_dict_list):
     
 def create_stk_node(stk_property_list):
     for stk_property_dict in stk_property_list:
+        html = ''
+        for tag in stk_property_dict['html']:
+            html = html + str(tag)
+        stk_property_dict['html'] = html   
         create_node(stk_label_list, stk_property_dict)
         
         node1_search_query = f"name: '{stk_property_dict['name']}', parent: {stk_property_dict['parent']}"
@@ -223,8 +262,38 @@ def create_stk_node(stk_property_list):
                         'part_of')
         
 #%% Litra, Nr and sentence nodes
-
-def _sentence_property_gen(tag, parents, tag_position):
+def _get_sentence_bow(sentence_raw_text, stopwords, exceptions_list, word_embeddings):
+    raw_text = sentence_raw_text.lower()
+    for exception in exceptions_list:
+        raw_text = raw_text.replace(exception[0], '')
+    
+    raw_text_clean = re.sub('[^a-zæøå ]+', '', raw_text)
+    
+    words = []
+    for word in raw_text_clean.split():
+        if word not in stopwords:
+            words.append(word)
+    
+    bow = []
+    word_vector_sum = np.array([0]*word_embeddings.vector_size, dtype='float32')
+    word_count = 0
+    for word in words:
+        try:
+            word_vector = word_embeddings[word]
+            word_vector_sum += word_vector
+            word_count += 1
+        except:
+            word_vector = None
+            
+        bow.append(word)
+    if word_count > 0:
+        word_vector_mean = list(word_vector_sum/word_count)
+    else:
+        word_vector_mean = None
+    return bow, word_vector_mean
+        
+        
+def _sentence_property_gen(tag, parents, tag_position, word_embeddings, stopwords):
     local_tag = copy.copy(tag)
     
     for span in local_tag.select('span'):
@@ -232,8 +301,8 @@ def _sentence_property_gen(tag, parents, tag_position):
     
     tag_raw_text = " " + local_tag.text
     
-    # "."-exeptions
-    exeptions_list = abbreviations
+    # "."-exceptions
+    exceptions_list = abbreviations
     
     month_list = ["januar", "februar", "marts", "april", "maj", "juni",
              "juli", "august", "september", "oktober", "november", "december"]
@@ -244,17 +313,15 @@ def _sentence_property_gen(tag, parents, tag_position):
             replacement = f"{i}%% {month}"
             tag_raw_text = tag_raw_text.replace(date,replacement)
     
-    for exeption in exeptions_list:
-        tag_raw_text = tag_raw_text.replace(exeption[0],exeption[1])
-    
-    re.findall("pkt[(%%)] [A-Z]",)
-    
+    for exception in exceptions_list:
+        tag_raw_text = tag_raw_text.replace(exception[0],exception[1])
+       
     pkt_instances = []
-    pkt_instances = pkt_instances + re.findall("[0-9]. pkt", tag_raw_text)
-    pkt_instances = pkt_instances + re.findall("[0-9]. og [0-9]", tag_raw_text)
-    pkt_instances = pkt_instances + re.findall("[0-9]., [0-9]", tag_raw_text)
+    pkt_instances = pkt_instances + re.findall("[0-9]\. pkt", tag_raw_text)
+    pkt_instances = pkt_instances + re.findall("[0-9]\. og [0-9]", tag_raw_text)
+    pkt_instances = pkt_instances + re.findall("[0-9]\., [0-9]", tag_raw_text)
     
-    number_instances = re.findall("[0-9]. ", tag_raw_text)
+    number_instances = re.findall("[0-9]\. ", tag_raw_text)
     pkt_instances = pkt_instances + number_instances
     
     pkt_replacements = []
@@ -263,14 +330,22 @@ def _sentence_property_gen(tag, parents, tag_position):
     
     for i in range(0,len(pkt_replacements)):
         tag_raw_text = tag_raw_text.replace(pkt_instances[i],pkt_replacements[i])
+        
+    sentence_end = re.findall("%% [A-Z]", tag_raw_text) + re.findall("%% §", tag_raw_text)
+    sentence_end_dot = [x.replace("%%",".") for x in sentence_end] 
     
-    # reversing "."-exeptions after split
+    for i in range(0,len(sentence_end)):
+        tag_raw_text = tag_raw_text.replace(sentence_end[i], sentence_end_dot[i])
+    
+    tag_raw_text = tag_raw_text.replace('jf.','jf%%')
+    
+    # reversing "."-exceptions after split
     sentence_property_list = []
     sentence_count = 0
     while tag_raw_text.find('.') > 0:
         sentence_text = tag_raw_text[0:tag_raw_text.find('.')+1]
-        for exeption in exeptions_list:
-            sentence_text = sentence_text.replace(exeption[1],exeption[0])
+        for exception in exceptions_list:
+            sentence_text = sentence_text.replace(exception[1],exception[0])
         
         for i in range(0,10):
             for month in month_list:
@@ -286,15 +361,24 @@ def _sentence_property_gen(tag, parents, tag_position):
         sentence_property_dict = {'name': f'{sentence_count}. pkt.', 
                                  'position':tag_position+sentence_count,
                                  'html': '',
-                                 'raw_text': sentence_text,
+                                 'raw_text': sentence_text.replace(' \n','').replace('\n',''),
                                  'parent': parents
                                  }
+        
+        sentence_bow, sentence_bow_mean = _get_sentence_bow(sentence_property_dict['raw_text'], 
+                                                                     stopwords, 
+                                                                     exceptions_list,
+                                                                     word_embeddings)
+        
+        sentence_property_dict['bow'] = sentence_bow
+        sentence_property_dict['bow_mean_vector'] = sentence_bow_mean
+        
         sentence_property_list.append(sentence_property_dict)
         
     if tag_raw_text.find('.') == -1 and len(tag_raw_text)>0:
         sentence_text = tag_raw_text
-        for exeption in exeptions_list:
-            sentence_text = sentence_text.replace(exeption[1],exeption[0])
+        for exception in exceptions_list:
+            sentence_text = sentence_text.replace(exception[1],exception[0])
         
         for i in range(0,10):
             for month in month_list:
@@ -309,9 +393,18 @@ def _sentence_property_gen(tag, parents, tag_position):
         sentence_property_dict = {'name': f'{sentence_count}. pkt.', 
                                  'position':tag_position+sentence_count,
                                  'html': '',
-                                 'raw_text': sentence_text,
+                                 'raw_text': sentence_text.replace(' \n','').replace('\n',''),
                                  'parent': parents
                                  }
+        
+        sentence_bow, sentence_bow_mean = _get_sentence_bow(sentence_property_dict['raw_text'], 
+                                                                     stopwords, 
+                                                                     exceptions_list,
+                                                                     word_embeddings)
+        
+        sentence_property_dict['bow'] = sentence_bow
+        sentence_property_dict['bow_mean_vector'] = sentence_bow_mean
+        
         sentence_property_list.append(sentence_property_dict)
     return sentence_property_list
 
@@ -328,45 +421,42 @@ def _litra_nr_property_gen(tag, parents, tag_position):
                          }
     return tag_property_dict
 
-def sentence_litra_nr_property_gen(paragraph_stk_raw_dict_list):
+def sentence_litra_nr_property_gen(stk_property_list, word_embeddings, stopwords):
     litra_property_list = []
     nr_property_list = []
     sentence_property_list = []
     
-    for p in paragraph_stk_raw_dict_list:
-        p_name = p[0]['stk_content'][0].find_all(attrs={"class": "ParagrafNr"})[0].string
-        #stk_nr = 0
+    for stk in stk_property_list:
+        parents = [stk['name']] + stk['parent']
         
-        for stk in p:
-            stk_nr = stk['stk_nr']
-            stk_name = f'Stk. {stk_nr}.'
-            tag_position = 0
+        stk_content = stk['html']
+        tag_position = 0
             
-            if stk['chapter_nr']>0:
-                parents = [stk_name, p_name, f"Kapitel {stk['chapter_nr']}", lov_shortname]
-            else:
-                parents = [stk_name, p_name, lov_shortname]
-            
-            for tag in stk['stk_content']:
-                if tag['class'][0] == 'Liste1':
-                    tag_property_dict = _litra_nr_property_gen(tag, 
-                                                               parents, 
-                                                               tag_position)
-                    tag_position += 1
-                    if tag_property_dict['name'][0:-1].isnumeric():
-                        nr_property_list.append(tag_property_dict)
-                    else:
-                        litra_property_list.append(tag_property_dict)
-                        
-                    parent_list = [tag_property_dict['name']] + parents    
-                    new_sentence_property_list = _sentence_property_gen(tag, parent_list, 0)
-                    sentence_property_list = sentence_property_list + new_sentence_property_list
-                    
+        for tag in stk_content:
+            if tag['class'][0] == 'Liste1':
+                tag_property_dict = _litra_nr_property_gen(tag, 
+                                                           parents, 
+                                                           tag_position)
+                tag_position += 1
+                if tag_property_dict['name'][0:-1].isnumeric():
+                    nr_property_list.append(tag_property_dict)
                 else:
+                    litra_property_list.append(tag_property_dict)
                     
-                    new_sentence_property_list = _sentence_property_gen(tag, parents, tag_position)
-                    sentence_property_list = sentence_property_list + new_sentence_property_list
-                    tag_position += len(new_sentence_property_list)
+                parent_list = [tag_property_dict['name']] + parents    
+                new_sentence_property_list = _sentence_property_gen(tag, parent_list, 0,
+                                                                    word_embeddings, stopwords)
+                sentence_property_list = sentence_property_list + new_sentence_property_list
+                
+            else:
+                
+                new_sentence_property_list = _sentence_property_gen(tag,
+                                                                    parents, 
+                                                                    tag_position, 
+                                                                    word_embeddings, 
+                                                                    stopwords)
+                sentence_property_list = sentence_property_list + new_sentence_property_list
+                tag_position += len(new_sentence_property_list)
 
     return (litra_property_list,
             nr_property_list,
@@ -408,9 +498,9 @@ def create_sentence_node(sentence_property_list):
 def _get_sentence_pkt_ref_numbers(text):
     sentence_pkt_ref_numbers = []
     while text.find('. pkt.') != -1:
-        p1 = re.search('[0-9]., [0-9]. og [0-9]. pkt.', text)
-        p2 = re.search('[0-9]. og [0-9]. pkt.', text)
-        p3 = re.search('[0-9]. pkt.', text)
+        p1 = re.search('[0-9]\., [0-9]\. og [0-9]\. pkt\.', text)
+        p2 = re.search('[0-9]\. og [0-9]\. pkt\.', text)
+        p3 = re.search('[0-9]\. pkt\.', text)
         if p1 != None:
            p_start = p1.start()
            p_end = p1.end()
@@ -453,6 +543,12 @@ def stk_internal_references(sentence_property_list):
         sentence_querys = _get_stk_internal_ref_query(sentence_property_dict, sentence_pkt_ref_numbers)
         stk_internal_ref_query_list = stk_internal_ref_query_list + sentence_querys
     return stk_internal_ref_query_list
+
+def create_paragraph_internal_ref_relations(stk_internal_ref_query_list):
+    for querys in stk_internal_ref_query_list:
+        create_relation(sentence_label_list[0],querys[0],
+            sentence_label_list[0],querys[1],
+                        'refers_to {type: "stk_internal"}')        
 
 #%% Paragraph internal reference 
 #i.e. one stk reference another in the same paragraph.
@@ -767,84 +863,198 @@ def create_relative_stk_ref_relation(relative_stk_ref_sets_list):
                 sentence_label_list[0],querys[1],
                             'refers_to {type: "paragraph_internal"}')
                
-#%% Law interal specific references. References across the different paragraphs to specific paragraphs
+#%% Specific paragraph references. References across the different paragraphs to specific paragraphs
 
-## get law internal single ref
-def _get_law_int_spec_stk_ref(text):
-    stk_list = []
-    stk ='Stk. '
-    for j in range(0,len(text)):
-        if text[j].isnumeric():
-            stk = stk + text[j]
-        elif text[j] == ',': 
-            stk = stk +'.'
-            if stk[-2].isnumeric():
-                stk_list.append(stk)
-            stk = 'Stk. '
-            continue
-        elif text[j:j+4] == ' og ':
-            stk = stk +'.'
-            stk_list.append(stk)
-            stk = 'Stk. '
-            for letter in text[j+4:]:
-                if letter.isnumeric():
-                    stk = stk + letter
-                else:
-                    stk = stk +'.'
-                    stk_list.append(stk)
-                    break
-        elif text[j] == ' ':
-            continue
-        else:
-            stk = stk +'.'
-            if stk[-2].isnumeric():
-                stk_list.append(stk)
-            break  
-    return stk_list              
 
-def _get_single_law_int_spec_ref(p, text):
-    single_ref = []
-    paragraph_nr = '§\xa0'
-    search_text = text[p+2:]
-    for i in range(0,len(search_text)):
-        if search_text[i].isnumeric():
-            paragraph_nr = paragraph_nr + search_text[i]
-        elif search_text[i] == ' ':
-            continue
-        elif search_text[i].isalpha() and search_text[i+1].isalnum() == False:
-            paragraph_nr = paragraph_nr + ' ' + search_text[i]
-        elif search_text[i] == ',':
-            if search_text[i+1:i+1+6] == ' stk.\xa0':
-                paragraph_nr = paragraph_nr + '.'
-                single_ref.append(paragraph_nr)
-                single_ref.append(_get_law_int_spec_stk_ref(search_text[i+1+6:]))
-                break
-            else:
-                paragraph_nr = paragraph_nr + '.'
-                single_ref.append(paragraph_nr)
-                break
-        else:
-            paragraph_nr = paragraph_nr + '.'
-            single_ref.append(paragraph_nr)
+def _get_single_ref_string(text): # Used both in _get_single_ref_dict() and _get_noncontinuous_ref_dict()
+    ref_string = text[0:2]
+    paragraph_string = text[0:2]
+    stk_string = ""
+    nr_string = ""
+    pkt_string = ""
+    searching = True
+    i = 2
+    while searching == True:
+        if len(text)<3:
             break
-    return single_ref
+        #paragraph
+        elif text[i].isnumeric():
+            ref_string = ref_string + text[i]
+            paragraph_string = paragraph_string + text[i]
+            i += 1
+        elif re.fullmatch(" [a-z][ ,.]", text[i:i+3]) != None and re.fullmatch(" i lov", text[i:i+6]) == None:
+            ref_string = ref_string + text[i:i+2]
+            paragraph_string = paragraph_string + text[i:i+2]
+            i += 2
+        # stk
+        elif re.fullmatch(", stk. [1-9]-[1-9]", text[i:i+10]) != None:
+            ref_string = ref_string + text[i:i+10]
+            start_stk = text[i:i+10][-3]
+            end_stk = text[i:i+10][-1]
+            for stk in range(int(start_stk),int(end_stk)+1):
+                stk_string = stk_string + f'stk. {stk},'
+            i += 10
+        elif re.fullmatch(", stk. [1-9], [1-9] og [1-9]", text[i:i+16]) != None:
+            ref_string = ref_string + text[i:i+16]
+            stk_string = stk_string + text[i+2:i+16]
+            i += 16
+        elif re.fullmatch(", stk. [1-9], [1-9] eller [1-9]", text[i:i+19]) != None:
+            ref_string = ref_string + text[i:i+19]
+            stk_string = stk_string + text[i+2:i+19]
+            i += 19
+        elif re.fullmatch(", stk. [1-9] og [1-9]", text[i:i+13]) != None:
+            ref_string = ref_string + text[i:i+13]
+            stk_string = stk_string + text[i+2:i+13]
+            i += 13
+        elif re.fullmatch(", stk. [1-9] eller [1-9]", text[i:i+16]) != None:
+            ref_string = ref_string + text[i:i+16]
+            stk_string = stk_string + text[i+2:i+16]
+            i += 16
+        elif re.fullmatch(", stk. [1-9]", text[i:i+8]) != None:
+            ref_string = ref_string + text[i:i+8]
+            stk_string = stk_string + text[i+2:i+8]
+            i += 8
+        # nummer
+        elif re.fullmatch(", nr. [1-9]-[1-9]", text[i:i+9]) != None:
+            ref_string = ref_string + text[i:i+9]
+            start_nr = text[i:i+9][-3]
+            end_nr = text[i:i+9][-1]
+            for nr in range(int(start_nr),int(end_nr)+1):
+                nr_string = nr_string + f'nr. {nr},'
+            i += 9
+        elif re.fullmatch(", nr. [1-9], [1-9] og [1-9]", text[i:i+15]) != None:
+            ref_string = ref_string + text[i:i+15]
+            nr_string = nr_string + text[i+2:i+15]
+            i += 15
+        elif re.fullmatch(", nr. [1-9], [1-9] eller [1-9]", text[i:i+18]) != None:
+            ref_string = ref_string + text[i:i+18]
+            nr_string = nr_string + text[i+2:i+18]
+            i += 18
+        elif re.fullmatch(", nr. [1-9] og [1-9]", text[i:i+12]) != None:
+            ref_string = ref_string + text[i:i+12]
+            nr_string = nr_string + text[i+2:i+12]
+            i += 12
+        elif re.fullmatch(", nr. [1-9] eller [1-9]", text[i:i+15]) != None:
+            ref_string = ref_string + text[i:i+15]
+            nr_string = nr_string + text[i+2:i+15]
+            i += 15
+        elif re.fullmatch(", nr. [1-9]", text[i:i+7]) != None:
+            ref_string = ref_string + text[i:i+7]
+            nr_string = nr_string + text[i+2:i+7]
+            i += 7
+        # litra
+        # Added later
+        # pkt
+        elif re.fullmatch(", [1-9]., [1-9]. og [1-9]. pkt.", text[i:i+19]) != None:
+            ref_string = ref_string + text[i:i+19]
+            pkt_string = pkt_string + text[i+2:i+19]
+            i += 19
+        elif re.fullmatch(", [1-9]., [1-9]. eller [1-9]. pkt.", text[i:i+22]) != None:
+            ref_string = ref_string + text[i:i+22]
+            pkt_string = pkt_string + text[i+2:i+22]
+            i += 22
+        elif re.fullmatch(", [1-9]. og [1-9]. pkt.", text[i:i+15]) != None:
+            ref_string = ref_string + text[i:i+15]
+            pkt_string = pkt_string + text[i+2:i+15]
+            i += 15
+        elif re.fullmatch(", [1-9]. eller [1-9]. pkt.", text[i:i+18]) != None:
+            ref_string = ref_string + text[i:i+18]
+            pkt_string = pkt_string + text[i+2:i+18]
+            i += 18
+        elif re.fullmatch(", [1-9]. pkt.", text[i:i+9]) != None:
+            ref_string = ref_string + text[i:i+9]
+            pkt_string = pkt_string + text[i+2:i+9]
+            i += 9
+        else:
+            searching = False
+            break
+    return ref_string, paragraph_string, stk_string, nr_string, pkt_string 
 
+def _get_single_ref_dict(p, text):
+    ref_string, paragraph_string, stk_string, nr_string, pkt_string = _get_single_ref_string(text[p:])
+    partial_parent_list = []
+    ref_names = []
+    p_ref_list = []
+    if len(pkt_string) > 0:
+        for n in re.findall("[1-9]", pkt_string):
+            ref_names.append(f"{n}. pkt.")
+        
+        if len(nr_string) > 0:
+            nr_number = re.search("[1-9]",nr_string)[0]
+            nr_name = f'{nr_number})'
+            partial_parent_list.append(nr_name)
+        
+        if len(stk_string) > 0:
+            stk_name = stk_string.replace('stk.', 'Stk.')
+            partial_parent_list.append(stk_name)
+        if len(stk_string) == 0:
+            stk_name = 'Stk. 1'
+            partial_parent_list.append(stk_name)
+        
+        partial_parent_list.append(paragraph_string.replace('§ ', '§\xa0')+'.')
+    
+    elif len(nr_string) > 0:
+        for n in re.findall("[1-9]", nr_string):
+            ref_names.append(f"{n})")
+        
+        if len(stk_string) > 0:
+            stk_name = stk_string.replace('stk.', 'Stk.')
+            partial_parent_list.append(stk_name)
+        if len(stk_string) == 0:
+            stk_name = 'Stk. 1'
+            partial_parent_list.append(stk_name)
+            
+        partial_parent_list.append(paragraph_string.replace('§ ', '§\xa0')+'.')
+    
+    elif len(stk_string) > 0:
+        for n in re.findall("[1-9]", stk_string):
+            ref_names.append(f"Stk. {n}.")
+            
+        partial_parent_list.append(paragraph_string.replace('§ ', '§\xa0')+'.')
+    
+    else:
+        ref_names.append(paragraph_string.replace('§ ', '§\xa0')+'.')
+    
+    p_refs = {
+        "ref_names": ref_names,
+        "partial_parent": partial_parent_list
+        }
+    
+    p_ref_list.append(p_refs)
+    single_ref_dict = {
+        "ref_string": ref_string,
+        "p_ref_list": p_ref_list,
+        "ref_type": "single"
+        }
+    return single_ref_dict
 
-## Get continuous list of ref
-def _get_continuous_law_int_spec_ref(p, text, paragraph_property_list):
+def _get_continuous_ref_dict(p, text, paragraph_property_list):
+    ref_string = '§§\xa0'
     start_p_nr = '§\xa0'
     is_start = True
     end_p_nr = '§\xa0'
+    extra_ref_dict = None
     not_continuous = False
     search_text = text[p+3:]
     for i in range(0,len(search_text)):
         if search_text[i].isnumeric() and is_start == True:
             start_p_nr = start_p_nr + search_text[i]
+            ref_string = ref_string + search_text[i]
         elif search_text[i].isnumeric() and is_start == False:
             end_p_nr = end_p_nr + search_text[i]
+            ref_string = ref_string + search_text[i]
         elif search_text[i] =='-':
+            ref_string = ref_string + search_text[i]
             start_p_nr = start_p_nr + '.'
             is_start = False
+        elif search_text[i:i+7] == ' eller ' and is_start == False:
+            ref_string = ref_string + ' eller '
+            extra_ref_dict = _get_single_ref_dict(0, "§\xa0"+search_text[i+7:])
+            ref_string = ref_string + extra_ref_dict['ref_string'][2:]
+        elif search_text[i:i+4] == ' og ' and is_start == False:
+            ref_string = ref_string + ' og '
+            extra_ref_dict = _get_single_ref_dict(0, "§\xa0"+search_text[i+4:])
+            ref_string = ref_string + extra_ref_dict['ref_string'][2:]
         else:
             if is_start == True:
                not_continuous = True 
@@ -852,207 +1062,290 @@ def _get_continuous_law_int_spec_ref(p, text, paragraph_property_list):
             break
     
     if not_continuous == True:
-        return []
+        return None
     if not_continuous == False:
-        paragraph_ref_list = []
-        for paragraph_dict in paragraph_property_list:
-            
-            if paragraph_dict['name'] == start_p_nr:
-                start_position = paragraph_dict['position']            
-            elif paragraph_dict['name'] == end_p_nr:
-                end_position = paragraph_dict['position']
-                break
-            
-        for paragraph_dict in paragraph_property_list:
-            
-            if paragraph_dict['position'] >= start_position and paragraph_dict['position'] <= end_position:
-                paragraph_ref_list.append([paragraph_dict['name']])
-             
-        return paragraph_ref_list
-    
-
-## Noncontinuous list of ref.    
-def _get_noncontinuous_law_int_spec__single_ref(text):
-    single_ref = []
-    paragraph_nr = '§\xa0'
-    for j in range(0,len(text)):
-        final_j = j
-        if text[j].isnumeric():
-            paragraph_nr = paragraph_nr + text[j]
-        elif text[j] == '-':
-            single_ref = []
-            break
-        elif text[j] == ' ':
-            continue
-        elif text[j].isalpha() and text[j+1].isalnum() == False:
-            paragraph_nr = paragraph_nr + ' ' + text[j]
-        elif text[j] == ',':
-            if text[j+1:j+1+6] == ' stk.\xa0':
-                stk_search_text = text[j+1+6:]
-                paragraph_nr = paragraph_nr + '.'
-                single_ref.append(paragraph_nr)
-                stk_list = []
-                stk ='Stk. '
-                for s in range(0,len(stk_search_text)):
-                    if stk_search_text[s].isnumeric():
-                        stk = stk + stk_search_text[s]
-                    elif stk_search_text[s] == ',': 
-                        stk = stk +'.'
-                        if stk[-2].isnumeric():
-                            stk_list.append(stk)
-                        stk = 'Stk. '
-                        continue
-                    elif stk_search_text[s:s+4] == ' og ':
-                        stk = stk +'.'
-                        stk_list.append(stk)
-                        stk = 'Stk. '
-                        t = 0
-                        for letter in stk_search_text[s+4:]:
-                            t += 1
-                            if letter.isnumeric():
-                                stk = stk + letter
-                            else:
-                                stk = stk +'.'
-                                stk_list.append(stk)
-                                break
-                        
-                        final_j += s + 4 + t
-                        break
-                    elif stk_search_text[s] == ' ':
-                        continue
-                    else:
-                        stk = stk +'.'
-                        if stk[-2].isnumeric():
-                            stk_list.append(stk)
-                        final_j += s
-                        break
-                single_ref.append(stk_list)
+        is_start = False
+        continuous_ref_list = []
+        for paragraph in paragraph_property_list:
+            if paragraph['name'] == start_p_nr:
+                is_start = True
+                continuous_ref_list.append({
+                    "ref_names": [paragraph['name']],
+                    "partial_parent": []
+                    })
+                continue
+            elif paragraph['name'] != start_p_nr and paragraph['name'] != end_p_nr and is_start == True:
+                continuous_ref_list.append({
+                    "ref_names": [paragraph['name']],
+                    "partial_parent": []
+                    })
+                continue
+            elif paragraph['name'] == end_p_nr:
+                is_start = False
+                continuous_ref_list.append({
+                    "ref_names": [paragraph['name']],
+                    "partial_parent": []
+                    })
+                if extra_ref_dict != None:
+                    continuous_ref_list = continuous_ref_list + extra_ref_dict['p_ref_list']
                 break
             else:
-                paragraph_nr = paragraph_nr + '.'
-                single_ref.append(paragraph_nr)
-                break
-        else:
-            paragraph_nr = paragraph_nr + '.'
-            single_ref.append(paragraph_nr)
-            break
-    return (single_ref, final_j)
-
-def _get_noncontinuous_law_int_spec_ref(p, text):
+                continue                
+            
+        continuous_ref_dict = {
+            "ref_string": ref_string,
+            "p_ref_list": continuous_ref_list,
+            "ref_type": "continuous"
+            }
+        return continuous_ref_dict
+    
+def _get_noncontinuous_ref_dict(p, text):
+    ref_string = '§'
     noncontinuous_ref_list = []
+    search_text = text[p:].replace('§ ', '§\xa0')
     state = 'continue'
-    search_text = text[p+3:]
-    i = -1
+    i = 1
     while state == 'continue':
-        i += 1
-        if i > len(search_text)-1:
-            break
-        elif search_text[i].isnumeric():
-            (individual_ref, j)  = _get_noncontinuous_law_int_spec__single_ref(search_text[i:])
-            if len(individual_ref) == 0:
-                noncontinuous_ref_list = []
-                state = 'break'
-                break   
-            i += j
-            noncontinuous_ref_list.append(individual_ref)
-            continue
-        elif search_text[i] == ',':
-            continue
-        elif search_text[i] == 'g' and search_text[i+2].isnumeric():
-            continue
-        elif search_text[i] == ' ':
-            continue
-        else:
+        if len(search_text[i:]) == 1 and search_text[i:].isnumeric() == False:
             state = 'break'
             break
-   
-    return noncontinuous_ref_list 
-    
-
-## Law internal refs
-# Test for external refs
-def _test_for_external_ref_prior_paragraph_sign(p, text):
-    n_spaces = []
-    for i in range(1,p):
-        if text[p-i] == ' ':
-            n_spaces.append(p-i)
-        if len(n_spaces) == 2:
+        if i > len(search_text)-1:
+            state = 'break'
             break
-    if len(n_spaces) < 2:
-        return False
-    elif ' lovens ' not in text[n_spaces[1]:n_spaces[0]+1] and 'lovens ' in text[n_spaces[1]:n_spaces[0]+1]:
-        return True
-    elif ' i lov om' in text[p+1:]:
-        return True
-    else:
-        return False
-
-# Get the law internal specific refs    
-def _get_law_internal_specific_ref(p, text, paragraph_property_list):
-    law_internal_spec_ref_list = []
+        if re.fullmatch(' og ',search_text[i:i+4]) != None:
+            ref_string = ref_string + ' o'
+            i += 2
+            continue
+        if re.fullmatch(' eller ',search_text[i:i+7]) != None:
+            ref_string = ref_string + ' elle'
+            i += 5
+            continue
+        
+        indi_ref_str, indi_p_str, indi_stk_str, indi_nr_str, indi_pkt_str = _get_single_ref_string(search_text[i:])
+        
+        if len(indi_ref_str) == 2:
+            state = 'break'
+            break
+        
+        partial_parent_list = []
+        ref_names = []
+        
+        if len(indi_pkt_str) > 0:
+            for n in re.findall("[1-9]", indi_pkt_str):
+                ref_names.append(f"{n}. pkt.")
+            
+            if len(indi_nr_str) > 0:
+                nr_number = re.search("[1-9]", indi_nr_str)[0]
+                nr_name = f'{nr_number})'
+                partial_parent_list.append(nr_name)
+            
+            if len(indi_stk_str) > 0:
+                stk_name = indi_stk_str.replace('stk.', 'Stk.')
+                partial_parent_list.append(stk_name)
+            if len(indi_stk_str) == 0:
+                stk_name = 'Stk. 1'
+                partial_parent_list.append(stk_name)
+            
+            partial_parent_list.append(indi_p_str.replace('§ ', '§\xa0').replace(', ', '§\xa0').replace('g ', '§\xa0').replace('r ', '§\xa0')+'.')
+        
+        elif len(indi_nr_str) > 0:
+            for n in re.findall("[1-9]", indi_nr_str):
+                ref_names.append(f"{n})")
+            
+            if len(indi_stk_str) > 0:
+                stk_name = indi_stk_str.replace('stk.', 'Stk.')
+                partial_parent_list.append(stk_name)
+            if len(indi_stk_str) == 0:
+                stk_name = 'Stk. 1'
+                partial_parent_list.append(stk_name)
+                
+            partial_parent_list.append(indi_p_str.replace('§ ', '§\xa0').replace(', ', '§\xa0').replace('g ', '§\xa0').replace('r ', '§\xa0')+'.')
+        
+        elif len(indi_stk_str) > 0:
+            for n in re.findall("[1-9]", indi_stk_str):
+                ref_names.append(f"Stk. {n}.")
+                
+            partial_parent_list.append(indi_p_str.replace('§ ', '§\xa0').replace(', ', '§\xa0').replace('g ', '§\xa0').replace('r ', '§\xa0')+'.')
+        
+        else:
+            ref_names.append(indi_p_str.replace('§ ', '§\xa0').replace(', ', '§\xa0').replace('g ', '§\xa0').replace('r ', '§\xa0')+'.')
+        
+        indi_refs = {
+            "ref_names": ref_names,
+            "partial_parent": partial_parent_list
+            }
+        
+        noncontinuous_ref_list.append(indi_refs)
+        ref_string = ref_string + indi_ref_str.replace('§ ', '§\xa0')
+        i = re.search(ref_string, search_text).end(0)
+        
+        
+    noncontinuous_ref_dict = {
+        "ref_string": ref_string,
+        "p_ref_list": noncontinuous_ref_list,
+        "ref_type": "noncontinuous"
+        } 
+    
+    return noncontinuous_ref_dict 
+    
+# Get individual refs: A reference can either be to a single concept indicated by a " §"
+#                       or to multiple concept indicated by a " §§".
+#                       The later can either be a list of concepts or a continues range of paragraphs.    
+def _get_individual_ref_dict(p, text, paragraph_property_list):
     if text[p-1:p+2] == ' §\xa0' and text[p+2].isnumeric():
-        single_ref = _get_single_law_int_spec_ref(p, text)
-        law_internal_spec_ref_list.append(single_ref)
+        single_ref_dict = _get_single_ref_dict(p, text)
+        individual_ref_dict = single_ref_dict
     
     elif text[p-1:p+3] == ' §§\xa0' and text[p+3].isnumeric():
-        continuous_law_int_spec_ref_list = _get_continuous_law_int_spec_ref(p, text, paragraph_property_list)
-        if  len(continuous_law_int_spec_ref_list) >0:
-            law_internal_spec_ref_list = law_internal_spec_ref_list + continuous_law_int_spec_ref_list
-        
-        noncontinuous_law_int_spec_ref_list = _get_noncontinuous_law_int_spec_ref(p, text)
-        
-        if len(noncontinuous_law_int_spec_ref_list) >0:
-            law_internal_spec_ref_list = law_internal_spec_ref_list + noncontinuous_law_int_spec_ref_list
+        continuous_ref_dict = _get_continuous_ref_dict(p, text, paragraph_property_list)
+        if  continuous_ref_dict != None:
+            individual_ref_dict = continuous_ref_dict
+                
+        elif continuous_ref_dict == None:
+            noncontinuous_ref_dict = _get_noncontinuous_ref_dict(p, text)
+            individual_ref_dict = noncontinuous_ref_dict
             
-    return law_internal_spec_ref_list
+    return individual_ref_dict
   
         
+# Test for external refs
+def _external_ref_present_in_sentence(text):
+    external_refs_present = []
+    for ref_cue in external_reference_cues:
+        if ref_cue.lower() in text.lower():
+            external_refs_present.append(ref_cue)
+    return external_refs_present
+
+# Get refernence 1. sub function! Preb text, call external_ref_present-function and get the internal sentence ref list.
+def _get_sentence_paragraph_specific_ref_list(text, paragraph_property_list):
+    search_text = text.replace('§ ', '§\xa0')
+    search_text_external = text.replace('§ ', '§\xa0')
+    sentence_paragraph_specific_ref_list = []
+    
+    potentially_external_ref_list = []
+    
+    external_refs_present = _external_ref_present_in_sentence(text)
+    
+    while search_text.find('§') != -1:
+        p = search_text.find('§')
+        individual_ref_dict = _get_individual_ref_dict(p, search_text, paragraph_property_list) # Here we are only geting references indicated by a "§"!!!
+        if len(external_refs_present) == 0:
+            new_start = re.search(individual_ref_dict['ref_string'], search_text).end(0)
+            individual_ref_dict['parent_law'] = 'internal'
+            sentence_paragraph_specific_ref_list.append(individual_ref_dict)
+            search_text = search_text[new_start:]
+    
+        elif len(external_refs_present) != 0:
+            ref_replacement = individual_ref_dict['ref_string'].replace(',','@@')
+            search_text_external = search_text_external.replace(individual_ref_dict['ref_string'], ref_replacement)
+            search_text_external = search_text_external.replace(', i lov','@@ i lov')
+            potentially_external_ref_list.append(individual_ref_dict)
+            new_start = re.search(individual_ref_dict['ref_string'], search_text).end(0)
+            search_text = search_text[new_start:]
+            
+    search_text_external = search_text_external.replace(', §','@@ §')
+    for external_ref_cue in external_refs_present:
+        search_text_external = search_text_external.replace(f', i{external_ref_cue}',f'@@ i{external_ref_cue}') 
+    search_text_external_split = re.split(',| efter | sammenholdt med ', search_text_external)
+    
+    for ref in potentially_external_ref_list:
+        test_ref_string = ref['ref_string'].replace(',','@@')
+        external = False
+        for text_ex in search_text_external_split:
+            if test_ref_string in text_ex:
+                for external_ref_cue in external_refs_present:
+                    if external_ref_cue.lower() in text_ex.lower():
+                        ref['parent_law'] = external_ref_cue
+                        
+                        sentence_paragraph_specific_ref_list.append(ref)
+                        
+                        external = True
+                        
+        if external == False:
+            refs_in_law_count = 0
+            for ref_name in ref['p_ref_list']:
+                for paragraph in paragraph_property_list:
+                    if ref_name['ref_names'][0][0] =='§':
+                        if ref_name['ref_names'][0] == paragraph['name']:
+                            refs_in_law_count += 1
+                    else:
+                        if ref_name['partial_parent'][0] == paragraph['name']:
+                            refs_in_law_count += 1
+            
+            if refs_in_law_count == len(ref['p_ref_list']):  
+                ref['parent_law'] = 'internal'
+                
+                sentence_paragraph_specific_ref_list.append(ref)
+            else:
+                ref['parent_law'] = external_refs_present[0]
+                sentence_paragraph_specific_ref_list.append(ref)
+    return sentence_paragraph_specific_ref_list #Should be a list of all law internal references! 
+
+
+# Get query sub function for getting parents.
+def _get_ref_parent(ref_name, paragraph_property_list):
+    for paragraph in paragraph_property_list:
+        if ref_name == paragraph['name']:
+            ref_parent = paragraph['parent']
+    return ref_parent
+
 # Get the law internal refs in every sentence
 def _get_law_internal_ref_query(sentence_property_dict, ref_name, ref_parent):
     node1_search_query = f"name: '{sentence_property_dict['name']}', parent: {sentence_property_dict['parent']}"
     node2_search_query = f"name: '{ref_name}', parent: {ref_parent}"
     return [node1_search_query, node2_search_query]
 
-
-def _get_sentence_ref_list(text, paragraph_property_list):
-    text = text.replace(' stk. ', ' stk.\xa0')
-    sentence_ref_list = []
-    while text.find('§') != -1:
-        p = text.find('§')
-        if _test_for_external_ref_prior_paragraph_sign(p, text) == True:
-            text = text[p+2:]
-        else:
-            sentence_ref_list = _get_law_internal_specific_ref(p, text, paragraph_property_list)
-            text = text[p+2:]
-    return sentence_ref_list
-            
-def law_internal_references(sentence_property_list, paragraph_property_list):
-    law_internal_ref_query_list = []
+## Main function            
+def paragraph_specific_references(sentence_property_list, paragraph_property_list):
+    law_internal_paragraph_specific_ref_query_list = []
+    law_external_paragraph_specific_ref_list = []
     for sentence_property_dict in sentence_property_list:
         text = " " + sentence_property_dict['raw_text'].lower()
-        sentence_ref_list = _get_sentence_ref_list(text, paragraph_property_list)
-        for ref in sentence_ref_list:
-            if len(ref) == 0:
-                continue
-            elif len(ref) == 1:
-                ref_name = ref[0]
-                ref_parent = sentence_property_dict['parent'][-1:]
-                ref_query = _get_law_internal_ref_query(sentence_property_dict, ref_name, ref_parent)
-                law_internal_ref_query_list.append(ref_query)
-            elif len(ref) > 1:
-                for stk in ref[1]:
-                    ref_name = stk
-                    ref_parent =[ref[0],sentence_property_dict['parent'][-1]]
-                    ref_query = _get_law_internal_ref_query(sentence_property_dict, ref_name, ref_parent)
-                    law_internal_ref_query_list.append(ref_query)
+        sentence_paragraph_specific_ref_list = _get_sentence_paragraph_specific_ref_list(text, paragraph_property_list) #geting references
+        
+        # Creating the query for every reference -> move to seperate function.
+        for ref_instance in sentence_paragraph_specific_ref_list:
+            if ref_instance['parent_law'] == 'internal':
+                for ref in ref_instance['p_ref_list']:
+                    for ref_name in ref['ref_names']:
+                        if ref_name[-2] =='i':
+                            ref_name_exist = False
+                            for paragraph in paragraph_property_list:
+                                
+                                if ref_name == paragraph['name']:
+                                    ref_name_exist = True
+                            if ref_name_exist == False:
+                                ref_name = ref_name[0:-3] + '.'
+                        
+                        if len(ref['partial_parent']) >0:
+                            ref_name_exist = False
+                            for paragraph in paragraph_property_list:
+                                if ref['partial_parent'][-1] == paragraph['name']:
+                                    ref_name_exist = True
+                            if ref_name_exist == False:
+                                continue
+                            ref_parent = ref['partial_parent'] + _get_ref_parent(ref['partial_parent'][-1], paragraph_property_list)
+                        else:
+                            ref_name_exist = False
+                            for paragraph in paragraph_property_list:
+                                if ref_name == paragraph['name']:
+                                    ref_name_exist = True
+                            if ref_name_exist == False:
+                                continue
+                            ref_parent = _get_ref_parent(ref_name, paragraph_property_list)
+                        ref_query = _get_law_internal_ref_query(sentence_property_dict, ref_name, ref_parent)
+                        law_internal_paragraph_specific_ref_query_list.append(ref_query)
+            
+            elif ref_instance['parent_law'] != 'internal':
+                law_external_paragraph_specific_ref_list.append((ref_instance,sentence_property_dict))
                     
-    return law_internal_ref_query_list
+    return law_internal_paragraph_specific_ref_query_list, law_external_paragraph_specific_ref_list
             
 def create_law_internal_ref_relation(law_internal_ref_query_list):
     for law_internal_ref_set in law_internal_ref_query_list:
             create_relation(sentence_label_list[0],law_internal_ref_set[0],
                 sentence_label_list[0],law_internal_ref_set[1],
-                            'refers_to')            
+                            'refers_to {type: "law_internal"}')            
         
 #%% Internal references to the law as a whole.             
 
@@ -1072,38 +1365,45 @@ def create_internal_ref_to_whole_law_relation(internal_ref_to_whole_law_list):
             node2_search_query = f"name: '{lov_name}', shortName: '{lov_shortname}'"
             create_relation(sentence_label_list[0],node1_search_query,
                 sentence_label_list[0],node2_search_query,
-                            'refers_to')               
+                            'refers_to {type: "law_internal"}')               
         
 #%% CREATING litra + number + sentence nodes in neo4j      
 if __name__ == "__main__":
+    
+    word_embeddings = load_wv_with_gensim('conll17.da.wv')
+    
+    with open("stopord.txt","r", encoding="UTF-8") as sw_file:
+        stopwords = [line.strip() for line in sw_file]
     
     #funktionærloven
     url = 'https://www.retsinformation.dk/api/document/eli/lta/2017/1002'
     #barselsloven
     url = 'https://www.retsinformation.dk/api/document/eli/lta/2021/235'
+    #lov om tidsbegrænset anslttekse
+    url = 'https://www.retsinformation.dk/api/document/eli/lta/2008/907'
     
     #Lov
     lov_soup, lov_property_dict, lov_name, lov_shortname = law_property_gen(url)
     
-    create_node(lov_label_list, lov_property_dict) # <- CREATING NODE in neo4j
-    
     #Paragraphs
-    paragraphs_raw_dict_list = paragraph_sorting_raw(lov_soup) 
-    (paragraph_property_list, chapter_property_list) = paragraph_property_gen(paragraphs_raw_dict_list)
+    (paragraph_property_list, chapter_property_list) = paragraph_property_gen(lov_soup)
     
-    create_chapter_node(chapter_property_list) # <- CREATING NODES in neo4j
-    create_paragraph_node(paragraph_property_list) # <- CREATING NODES in neo4j
-    
-    # Stk
-    paragraph_stk_raw_dict_list =  stk_sorting_raw(paragraphs_raw_dict_list)   
-    stk_property_list = stk_property_gen(paragraph_stk_raw_dict_list)
-    
-    create_stk_node(stk_property_list) # <- CREATING NODES in neo4j
+    # Stk   
+    stk_property_list = stk_property_gen(paragraph_property_list)
     
     #Litra, Nr and sentences
     (litra_property_list,
     nr_property_list,
-    sentence_property_list) = sentence_litra_nr_property_gen(paragraph_stk_raw_dict_list)
+    sentence_property_list) = sentence_litra_nr_property_gen(stk_property_list, 
+                                                             word_embeddings,
+                                                             stopwords)
+    
+    create_node(lov_label_list, lov_property_dict) # <- CREATING NODE in neo4j
+    
+    create_chapter_node(chapter_property_list) # <- CREATING NODES in neo4j
+    create_paragraph_node(paragraph_property_list) # <- CREATING NODES in neo4j
+    
+    create_stk_node(stk_property_list) # <- CREATING NODES in neo4j
     
     create_litra_node(litra_property_list) # <- CREATING NODES in neo4j
     create_nr_node(nr_property_list) # <- CREATING NODES in neo4j
@@ -1113,21 +1413,24 @@ if __name__ == "__main__":
     ## References
     stk_internal_ref_query_list = stk_internal_references(sentence_property_list)
     
+    create_paragraph_internal_ref_relations(stk_internal_ref_query_list)
+    
     paragraph_internal_references_query_list = paragraph_internal_references(sentence_property_list)
 
     create_paragraph_internal_ref_relations(paragraph_internal_references_query_list) #<- CREATING RELATIONS in neo4j
 
-    relative_stk_ref_sets_list = get_relative_ref_sets(sentence_property_list)
+    relative_stk_ref_sets_list = get_relative_ref_sets(sentence_property_list) #only in funktionærloven
     
     create_relative_stk_ref_relation(relative_stk_ref_sets_list)
     
-    list_internal_ref_query_list = list_internal_ref(sentence_property_list)
+    list_internal_ref_query_list = list_internal_ref(sentence_property_list) #only in funktionærloven
 
     create_list_internal_ref_relations(list_internal_ref_query_list)
 
-    law_internal_ref_query_list = law_internal_references(sentence_property_list, paragraph_property_list)
+    (law_internal_paragraph_specific_ref_query_list, 
+     law_external_paragraph_specific_ref_list) = paragraph_specific_references(sentence_property_list, paragraph_property_list)
     
-    create_law_internal_ref_relation(law_internal_ref_query_list)
+    create_law_internal_ref_relation(law_internal_paragraph_specific_ref_query_list)
 
     internal_ref_to_whole_law_list = internal_ref_to_whole_law(sentence_property_list)
 
