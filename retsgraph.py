@@ -70,6 +70,7 @@ class _RetsGraphPopulator:
                node1_label=node1_label, node1_search_query=node1_search_query, 
                node2_label=node2_label, node2_search_query=node2_search_query, 
                relation_label=relation_label)
+        
 
 uri = "neo4j+s://9c3dbb51.databases.neo4j.io"
 user = "neo4j"
