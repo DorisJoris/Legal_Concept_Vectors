@@ -49,7 +49,8 @@ def law_property_gen(url):
         data = json.loads(page.read().decode())
 
     lov_json = data[0]
-    lov_html = lov_json['documentHtml']
+    lov_html_end = lov_json['documentHtml'].find('<hr class="IKraftStreg">')
+    lov_html = lov_json['documentHtml'][0:lov_html_end]
     lov_soup = bs(lov_html, 'html.parser')
     
     try:
@@ -982,7 +983,10 @@ def _get_single_ref_string(text): # Used both in _get_single_ref_dict() and _get
     return ref_string, paragraph_string, stk_string, nr_string, pkt_string 
 
 def _get_single_ref_dict(p, text):
-    ref_string, paragraph_string, stk_string, nr_string, pkt_string = _get_single_ref_string(text[p:])
+    try:
+     ref_string, paragraph_string, stk_string, nr_string, pkt_string = _get_single_ref_string(text[p:])
+    except:
+        print(text[p:])
     partial_parent_list = []
     ref_names = []
     p_ref_list = []
@@ -997,9 +1001,9 @@ def _get_single_ref_dict(p, text):
         
         if len(stk_string) > 0:
             stk_name = stk_string.replace('stk.', 'Stk.')
-            partial_parent_list.append(stk_name)
+            partial_parent_list.append(stk_name+'.')
         if len(stk_string) == 0:
-            stk_name = 'Stk. 1'
+            stk_name = 'Stk. 1.'
             partial_parent_list.append(stk_name)
         
         partial_parent_list.append(paragraph_string.replace('§ ', '§\xa0')+'.')
@@ -1010,9 +1014,9 @@ def _get_single_ref_dict(p, text):
         
         if len(stk_string) > 0:
             stk_name = stk_string.replace('stk.', 'Stk.')
-            partial_parent_list.append(stk_name)
+            partial_parent_list.append(stk_name+'.')
         if len(stk_string) == 0:
-            stk_name = 'Stk. 1'
+            stk_name = 'Stk. 1.'
             partial_parent_list.append(stk_name)
             
         partial_parent_list.append(paragraph_string.replace('§ ', '§\xa0')+'.')
@@ -1420,7 +1424,8 @@ def _get_sentence_bow_meanvector(sentence_raw_text, stopwords, word_embeddings):
         if word not in stopwords:
             words.append(word)
     
-    bow = []
+    bow = dict()
+    oov_list = list()
     word_vector_sum = np.array([0]*word_embeddings.vector_size, dtype='float32')
     word_count = 0
     for word in words:
@@ -1428,15 +1433,19 @@ def _get_sentence_bow_meanvector(sentence_raw_text, stopwords, word_embeddings):
             word_vector = word_embeddings[word]
             word_vector_sum += word_vector
             word_count += 1
+            if word in bow.keys():
+                bow[word] += 1
+            else:
+                bow[word] = 1
         except:
             word_vector = None
-            
-        bow.append(word)
+            oov_list.append(word)
+        
     if word_count > 0:
         word_vector_mean = word_vector_sum/word_count
     else:
         word_vector_mean = None
-    return bow, word_vector_mean
+    return bow, word_vector_mean, oov_list
 
 def _get_law_document_dict_raw(url):
     
@@ -1512,7 +1521,9 @@ def get_law_document_dict(url, stopwords, word_embeddings):
         'retsinfo_id': law['id'],
         'url': url,
         'labels': law_document_dict_raw['law_label'],
-        'concept_bow': [],
+        'bow': dict(),
+        'bow_meanvector': np.array([0]*word_embeddings.vector_size, dtype='float32'),
+        'concept_bow': dict(),
         'concept_vector': np.array([0]*word_embeddings.vector_size, dtype='float32'),
         'neighbours': []
         }
@@ -1530,7 +1541,9 @@ def get_law_document_dict(url, stopwords, word_embeddings):
             'position': chapter['position'],
             'parent': chapter['parent'],
             'labels': law_document_dict_raw['chapter_label'],
-            'concept_bow': [],
+            'bow': dict(),
+            'bow_meanvector': np.array([0]*word_embeddings.vector_size, dtype='float32'),
+            'concept_bow': dict(),
             'concept_vector': np.array([0]*word_embeddings.vector_size, dtype='float32')
             }
         
@@ -1551,7 +1564,9 @@ def get_law_document_dict(url, stopwords, word_embeddings):
             'position': paragraph['position'],
             'parent': paragraph['parent'],
             'labels': law_document_dict_raw['paragraph_label'],
-            'concept_bow': [],
+            'bow': dict(),
+            'bow_meanvector': np.array([0]*word_embeddings.vector_size, dtype='float32'),
+            'concept_bow': dict(),
             'concept_vector': np.array([0]*word_embeddings.vector_size, dtype='float32')
             }
         
@@ -1571,7 +1586,9 @@ def get_law_document_dict(url, stopwords, word_embeddings):
             'position': stk['position'],
             'parent': stk['parent'],
             'labels': law_document_dict_raw['stk_label'],
-            'concept_bow': [],
+            'bow': dict(),
+            'bow_meanvector': np.array([0]*word_embeddings.vector_size, dtype='float32'),
+            'concept_bow': dict(),
             'concept_vector': np.array([0]*word_embeddings.vector_size, dtype='float32')
             }
         
@@ -1591,7 +1608,9 @@ def get_law_document_dict(url, stopwords, word_embeddings):
             'position': litra['position'],
             'parent': litra['parent'],
             'labels': law_document_dict_raw['litra_label'],
-            'concept_bow': [],
+            'bow': dict(),
+            'bow_meanvector': np.array([0]*word_embeddings.vector_size, dtype='float32'),
+            'concept_bow': dict(),
             'concept_vector': np.array([0]*word_embeddings.vector_size, dtype='float32')
             }
         
@@ -1611,7 +1630,9 @@ def get_law_document_dict(url, stopwords, word_embeddings):
             'position': nr['position'],
             'parent': nr['parent'],
             'labels': law_document_dict_raw['nr_label'],
-            'concept_bow': [],
+            'bow': dict(),
+            'bow_meanvector': np.array([0]*word_embeddings.vector_size, dtype='float32'),
+            'concept_bow': dict(),
             'concept_vector': np.array([0]*word_embeddings.vector_size, dtype='float32')
             }
         
@@ -1623,8 +1644,9 @@ def get_law_document_dict(url, stopwords, word_embeddings):
         
     # sentence
     sentence_list = law_document_dict_raw['sentence']
+    oov_list = list()
     for sentence in sentence_list:
-        bow, meanvector = _get_sentence_bow_meanvector(sentence['raw_text'], stopwords, word_embeddings)
+        bow, meanvector, sentence_oov_list = _get_sentence_bow_meanvector(sentence['raw_text'], stopwords, word_embeddings)
         sentence_id = _get_legal_concept_id(sentence['name'],sentence['parent'])
         new_sentence_property_dict = {
             'id': sentence_id,
@@ -1639,16 +1661,29 @@ def get_law_document_dict(url, stopwords, word_embeddings):
             'concept_vector': meanvector
             }
         
+        oov_list = oov_list + sentence_oov_list
+        
         parent_id = _get_legal_concept_id(sentence['parent'][0],sentence['parent'][1:])
         new_sentence_property_dict['neighbours'] = [{'neighbour':parent_id, 'type': 'parent'}]
         legal_concepts[parent_id]['neighbours'].append({'neighbour':sentence_id, 'type': 'child'})
         
         legal_concepts[sentence_id] = new_sentence_property_dict
         
+    for ref in law_document_dict_raw['internal_ref']:
+        ref_from_id = _get_legal_concept_id(ref['ref_from']['name'], ref['ref_from']['parent'])
+        try:
+            ref_to_id = _get_legal_concept_id(ref['ref_to']['name'], ref['ref_to']['parent'])
+        except:
+            ref_to_id =  ref['ref_to']['shortName']
+        try:
+            legal_concepts[ref_to_id]['neighbours'].append({'neighbour':ref_from_id, 'type': 'ref_from'})
+            legal_concepts[ref_from_id]['neighbours'].append({'neighbour':ref_to_id, 'type': 'ref_to'})
+        except:
+            legal_concepts[ref_from_id]['neighbours'].append({'neighbour':ref_to_id, 'type': 'ref_to_UNKNOWN'})
     law_doc_dict = {
         'legal_concepts': legal_concepts,
-        'internal_ref': law_document_dict_raw['internal_ref'],
-        'external_ref': law_document_dict_raw['external_ref']
+        'external_ref': law_document_dict_raw['external_ref'],
+        'oov_list': oov_list
         }
     
     return law_doc_dict
@@ -1693,7 +1728,7 @@ if __name__ == "__main__":
      law_external_paragraph_specific_ref_list) = paragraph_specific_references(sentence_property_list, paragraph_property_list)
 
     internal_ref_to_whole_law_list = internal_ref_to_whole_law(sentence_property_list)
-    internal_ref_to_whole_law_dict_list = get_internal_ref_to_whole_law_dict_list(internal_ref_to_whole_law_list)
+    internal_ref_to_whole_law_dict_list = get_internal_ref_to_whole_law_dict_list(internal_ref_to_whole_law_list, lov_name, lov_shortname)
                                              
     
     #create nodes                                                         
