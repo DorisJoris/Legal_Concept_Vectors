@@ -1,450 +1,13 @@
 # -*- coding: utf-8 -*-
-"""
-Created on Wed Feb  9 19:36:17 2022
-
-@author: bejob
-"""
-# Initial comment:
-# The purpose of this code is to extract and segment the text of a danish law into its subparts,  
-# such as paragraphs, stk (sections of a paragraph) and so on and organize these in a neo4j database. 
-# The code has been writen for Funktionærloven, LBK nr 1002 af 24/08/2017, and will need to be
-# modified to be used on other sources of law. 
-    
 #%% Import
-import urllib.request
-import json
-import copy
+
 import re
-import numpy as np
 
-
-from retsgraph import create_node
-from retsgraph import create_relation
-
-from legal_concept_resources import abbreviations
-from legal_concept_resources import lov_label_list
-from legal_concept_resources import chapter_label_list
-from legal_concept_resources import paragraph_label_list
-from legal_concept_resources import stk_label_list
-from legal_concept_resources import litra_label_list
-from legal_concept_resources import nr_label_list
-from legal_concept_resources import sentence_label_list
-from legal_concept_resources import relative_stk_ref_cues
 from legal_concept_resources import internal_ref_to_whole_law_cues
+from legal_concept_resources import relative_stk_ref_cues
 from legal_concept_resources import external_reference_cues
 
-from bs4 import BeautifulSoup as bs
 
-
-#%% Create lov node
-# This function takes the url, in this case: 
-    # https://www.retsinformation.dk/api/document/eli/lta/2017/1002
-# to request a json-file containing some meta information about the law
-# and the text of the law in a html-format.
-# The funktion continues to generate a dictionary of the properties for the law that will
-# be saved to the database. 
-
-def law_property_gen(url):
-    with urllib.request.urlopen(url) as page:
-        data = json.loads(page.read().decode())
-
-    lov_json = data[0]
-    lov_html_end = lov_json['documentHtml'].find('<hr class="IKraftStreg">')
-    lov_html = lov_json['documentHtml'][0:lov_html_end]
-    lov_soup = bs(lov_html, 'html.parser')
-    
-    try:
-        lov_name = lov_json["popularTitle"]
-    except:
-        lov_name = lov_json["title"]
-    
-    lov_property_dict = {"name":lov_name,
-                        "shortName":lov_json["shortName"],
-                        "title":lov_json["title"],
-                        "date_of_publication":lov_json["metadata"][0]["displayValue"],
-                        "ressort": lov_json["ressort"],
-                        "id": lov_json["id"],
-                        'html':lov_html,
-                        'raw_text':lov_soup.text}
-    
-    lov_name = lov_property_dict['name']
-    lov_shortname = lov_property_dict['shortName']
-    return lov_soup, lov_property_dict, lov_name, lov_shortname
-
-#%% Extract paragraph content -> generate paragraphs_raw_list
-# This funktion takes a BeautifulSoup of the law-html and extract the included paragraphs.
-# The html of this law is organized as a list of <p>-tags one for every subpart of the law.
-# The beginning of a paragraph is indicated by a <p>-tag of the class: 'Paragraf'.
-# Every following <p>-tag is then assumed to be a part of the same paragraph until a new <p>-tag
-# of the class: 'Paragraf' is found.
-# The paragraphs are organized into lists of <p>-tags, one for every paragraph.
-# Only the main part of the law-text is taken into account. 
-# The <p>-tag with the class: 'IkraftTeskt' is assumed to indicate the end of the main part.
-
-
-    
-
-def _paragraph_sorting_raw(lov_soup):
-    pees = lov_soup.select('p')
-    p_nr = 0
-    paragraphs_raw_dict_list = []
-    ch_nr = 0
-    ch_name = ''
-    for p in pees:
-        if p['class'][0] == 'IkraftTekst':
-            break
-        if p['class'][0] == 'Kapitel':
-            ch_nr += 1
-            continue
-        if p['class'][0] == 'KapitelOverskrift2':
-            ch_name = p.text
-            continue
-        if p['class'][0] == 'Paragraf':
-            p_nr += 1
-            paragraphs_raw_dict_list.append({'paragraph_content':[],
-                                             'paragraph_id': p_nr,
-                                             'chapter_nr': ch_nr,
-                                             'chapter_name': ch_name})
-        if p_nr > 0:
-            paragraphs_raw_dict_list[p_nr-1]['paragraph_content'].append(p)
-    return paragraphs_raw_dict_list
-
-
-def paragraph_property_gen(lov_soup, lov_shortname):
-    paragraphs_raw_dict_list = _paragraph_sorting_raw(lov_soup)
-    paragraph_property_list = []
-    chapter_property_list = []
-    p_nr = 0
-    ch_nr = 0
-    for p_dict in paragraphs_raw_dict_list:
-        p = p_dict['paragraph_content']
-        p_nr +=1
-        name = p[0].find_all(attrs={"class": "ParagrafNr"})[0].string.replace('§ ', '§\xa0')
-        if p_dict['chapter_nr']>0:
-            parents = [f"Kapitel {p_dict['chapter_nr']}", lov_shortname]
-            if ch_nr != p_dict['chapter_nr']:
-                ch_nr = p_dict['chapter_nr']
-                chapter_property_dict = {'name': f"Kapitel {p_dict['chapter_nr']}",
-                                         'shortName': p_dict['chapter_name'],
-                                         'position': p_dict['chapter_nr'],
-                                         'parent': [lov_shortname]
-                                         }
-                chapter_property_list.append(chapter_property_dict)
-        else:
-            parents = [lov_shortname]
-        
-        paragraph_html = []
-        paragraph_raw_text = ''
-        for tag in p:
-            paragraph_html.append(tag)
-            paragraph_raw_text += tag.text
-        
-        if len(name) == 2:
-            bold_tag_str = p[0].find_all(attrs={"class": "Bold"})[0].string
-            if '(Udelades)' in paragraph_raw_text and '-' in bold_tag_str:
-                p_start = ''
-                p_end = ''
-                is_start = True
-                for l in bold_tag_str:
-                    if l.isnumeric() and is_start == True:
-                        p_start = p_start + l
-                    elif l == '-':
-                        is_start = False
-                    elif l.isnumeric() and is_start == False:
-                        p_end = p_end + l
-                    else:
-                        continue
-                
-                for i in range(int(p_start),int(p_end)+1):
-                    name = f'§\xa0{i}.'
-                    p_property_dict = {'name': name, 
-                                       'position':p_nr,
-                                       'html':paragraph_html,
-                                       'raw_text':paragraph_raw_text,
-                                       'parent': parents
-                                       }
-                    paragraph_property_list.append(p_property_dict)
-                    p_nr += 1
-        else: 
-            p_property_dict = {'name': name, 
-                               'position':p_nr,
-                               'html':paragraph_html,
-                               'raw_text':paragraph_raw_text,
-                               'parent': parents
-                               }
-            
-            paragraph_property_list.append(p_property_dict)
-    return (paragraph_property_list, chapter_property_list)
-
-def create_chapter_node(chapter_property_list):
-    for chapter_property_dict in chapter_property_list:
-        create_node(chapter_label_list, chapter_property_dict)
-        
-        node1_search_query = f"name: '{chapter_property_dict['name']}', parent: {chapter_property_dict['parent']}"
-        node2_search_query = f"name: '{lov_name}', shortName: '{lov_property_dict['shortName']}'"
-        create_relation(chapter_label_list[1],node1_search_query,
-                        lov_label_list[1],node2_search_query,'part_of')
-
-
-def create_paragraph_node(paragraph_property_list):
-    for paragraph_property_dict in paragraph_property_list:
-        html = ''
-        for tag in paragraph_property_dict['html']:
-            html = html + str(tag)
-        
-        paragraph_property_dict['html'] = html    
-        create_node(paragraph_label_list, paragraph_property_dict)
-        
-        node1_search_query = f"name: '{paragraph_property_dict['name']}', parent: {paragraph_property_dict['parent']}"
-        if len(paragraph_property_dict['parent']) == 1:
-            node2_search_query = f"name: '{lov_name}', shortName: '{lov_property_dict['shortName']}'"
-        if len(paragraph_property_dict['parent']) == 2:
-            node2_search_query = f"name: '{paragraph_property_dict['parent'][0]}', parent: {paragraph_property_dict['parent'][1:]}"
-        create_relation(paragraph_label_list[1],node1_search_query,
-                        lov_label_list[0],node2_search_query,'part_of')
-
-#%% Extract stk content -> generate paragraph_stk_raw_list
-def _stk_sorting_raw(paragraph_property_list):
-    paragraph_stk_raw_dict_list = []
-    for p_dict in paragraph_property_list:
-        p_content = p_dict['html']
-        stk_parent = [p_dict['name']] + p_dict['parent']
-        stk_nr = 0
-        stk_in_paragraph_list = []
-        for tag in p_content:
-            if tag['class'][0] == 'Paragraf' or tag['class'][0] =='Stk2':
-                stk_nr += 1
-                stk_in_paragraph_list.append({'stk_content':[],
-                                              'stk_nr': stk_nr,
-                                              'parent': stk_parent})
-            if stk_nr > 0:
-                stk_in_paragraph_list[stk_nr-1]['stk_content'].append(tag)
-        paragraph_stk_raw_dict_list.append(stk_in_paragraph_list)
-    
-    return paragraph_stk_raw_dict_list
-
-def stk_property_gen(paragraph_property_list):
-    paragraph_stk_raw_dict_list = _stk_sorting_raw(paragraph_property_list)
-    stk_property_list = []
-    for p in paragraph_stk_raw_dict_list:
-        parents = p[0]['parent']
-        
-        for stk in p:
-            stk_nr = stk['stk_nr']
-            name = f'Stk. {stk_nr}.'
-            stk_html = stk['stk_content']
-            stk_raw_text = ''
-            for tag in stk['stk_content']:
-                stk_raw_text += tag.text
-            
-            stk_property_dict = {'name': name, 
-                                 'position':stk_nr,
-                                 'html':stk_html,
-                                 'raw_text':stk_raw_text,
-                                 'parent': parents
-                                 }
-            stk_property_list.append(stk_property_dict)
-    return stk_property_list
-
-    
-def create_stk_node(stk_property_list):
-    for stk_property_dict in stk_property_list:
-        html = ''
-        for tag in stk_property_dict['html']:
-            html = html + str(tag)
-        stk_property_dict['html'] = html   
-        create_node(stk_label_list, stk_property_dict)
-        
-        node1_search_query = f"name: '{stk_property_dict['name']}', parent: {stk_property_dict['parent']}"
-        node2_search_query = f"name: '{stk_property_dict['parent'][0]}', parent: {stk_property_dict['parent'][1:]}"
-        create_relation(stk_label_list[1],node1_search_query,
-            paragraph_label_list[1],node2_search_query,
-                        'part_of')
-        
-#%% Litra, Nr and sentence nodes        
-        
-def _sentence_property_gen(tag, parents, tag_position):
-    local_tag = copy.copy(tag)
-    
-    for span in local_tag.select('span'):
-        span.extract()
-    
-    tag_raw_text = " " + local_tag.text
-    
-    # "."-exceptions
-    exceptions_list = abbreviations
-    
-    month_list = ["januar", "februar", "marts", "april", "maj", "juni",
-             "juli", "august", "september", "oktober", "november", "december"]
-    
-    for i in range(0,10):
-        for month in month_list:
-            date = f"{i}. {month}"
-            replacement = f"{i}%% {month}"
-            tag_raw_text = tag_raw_text.replace(date,replacement)
-    
-    for exception in exceptions_list:
-        tag_raw_text = tag_raw_text.replace(exception[0],exception[1])
-       
-    pkt_instances = []
-    pkt_instances = pkt_instances + re.findall("[0-9]\. pkt", tag_raw_text)
-    pkt_instances = pkt_instances + re.findall("[0-9]\. og [0-9]", tag_raw_text)
-    pkt_instances = pkt_instances + re.findall("[0-9]\., [0-9]", tag_raw_text)
-    
-    number_instances = re.findall("[0-9]\. ", tag_raw_text)
-    pkt_instances = pkt_instances + number_instances
-    
-    pkt_replacements = []
-    for instance in pkt_instances:
-        pkt_replacements.append(instance.replace('.','%%'))
-    
-    for i in range(0,len(pkt_replacements)):
-        tag_raw_text = tag_raw_text.replace(pkt_instances[i],pkt_replacements[i])
-        
-    sentence_end = re.findall("%% [A-Z]", tag_raw_text) + re.findall("%% §", tag_raw_text)
-    sentence_end_dot = [x.replace("%%",".") for x in sentence_end] 
-    
-    for i in range(0,len(sentence_end)):
-        tag_raw_text = tag_raw_text.replace(sentence_end[i], sentence_end_dot[i])
-    
-    tag_raw_text = tag_raw_text.replace('jf.','jf%%')
-    
-    # reversing "."-exceptions after split
-    sentence_property_list = []
-    sentence_count = 0
-    while tag_raw_text.find('.') > 0:
-        sentence_text = tag_raw_text[0:tag_raw_text.find('.')+1]
-        for exception in exceptions_list:
-            sentence_text = sentence_text.replace(exception[1],exception[0])
-        
-        for i in range(0,10):
-            for month in month_list:
-                date = f"{i}%% {month}"
-                replacement = f"{i}. {month}"
-                sentence_text = sentence_text.replace(date,replacement)
-        
-        for i in range(0,len(pkt_replacements)):
-            sentence_text = sentence_text.replace(pkt_replacements[i],pkt_instances[i])
-        
-        tag_raw_text = tag_raw_text[tag_raw_text.find('.')+1:len(tag_raw_text)]
-        sentence_count += 1
-        sentence_property_dict = {'name': f'{sentence_count}. pkt.', 
-                                 'position':tag_position+sentence_count,
-                                 'html': '',
-                                 'raw_text': sentence_text.replace(' \n','').replace('\n',''),
-                                 'parent': parents
-                                 }
-        
-        
-        sentence_property_list.append(sentence_property_dict)
-        
-    if tag_raw_text.find('.') == -1 and len(tag_raw_text)>0:
-        sentence_text = tag_raw_text
-        for exception in exceptions_list:
-            sentence_text = sentence_text.replace(exception[1],exception[0])
-        
-        for i in range(0,10):
-            for month in month_list:
-                date = f"{i}%% {month}"
-                replacement = f"{i}. {month}"
-                sentence_text = sentence_text.replace(date,replacement)
-        
-        for i in range(0,len(pkt_replacements)):
-            sentence_text = sentence_text.replace(pkt_replacements[i],pkt_instances[i])
-        
-        sentence_count += 1
-        sentence_property_dict = {'name': f'{sentence_count}. pkt.', 
-                                 'position':tag_position+sentence_count,
-                                 'html': '',
-                                 'raw_text': sentence_text.replace(' \n','').replace('\n',''),
-                                 'parent': parents
-                                 }
-        
-        sentence_property_list.append(sentence_property_dict)
-    return sentence_property_list
-
-
-def _litra_nr_property_gen(tag, parents, tag_position):
-    tag_html = str(tag)
-    tag_raw_text = tag.text
-    name = tag.find('span', attrs={'class': 'Liste1Nr'}).text
-    tag_property_dict = {'name': name, 
-                         'position':tag_position+1,
-                         'html':tag_html,
-                         'raw_text':tag_raw_text,
-                         'parent': parents
-                         }
-    return tag_property_dict
-
-def sentence_litra_nr_property_gen(stk_property_list):
-    litra_property_list = []
-    nr_property_list = []
-    sentence_property_list = []
-    
-    for stk in stk_property_list:
-        parents = [stk['name']] + stk['parent']
-        
-        stk_content = stk['html']
-        tag_position = 0
-            
-        for tag in stk_content:
-            if tag['class'][0] == 'Liste1':
-                tag_property_dict = _litra_nr_property_gen(tag, 
-                                                           parents, 
-                                                           tag_position)
-                tag_position += 1
-                if tag_property_dict['name'][0:-1].isnumeric():
-                    nr_property_list.append(tag_property_dict)
-                else:
-                    litra_property_list.append(tag_property_dict)
-                    
-                parent_list = [tag_property_dict['name']] + parents    
-                new_sentence_property_list = _sentence_property_gen(tag, parent_list, 0)
-                sentence_property_list = sentence_property_list + new_sentence_property_list
-                
-            else:
-                
-                new_sentence_property_list = _sentence_property_gen(tag,
-                                                                    parents, 
-                                                                    tag_position)
-                sentence_property_list = sentence_property_list + new_sentence_property_list
-                tag_position += len(new_sentence_property_list)
-
-    return (litra_property_list,
-            nr_property_list,
-            sentence_property_list)
-    
-
-def create_litra_node(litra_property_list):
-    for litra_property_dict in litra_property_list:
-        create_node(litra_label_list, litra_property_dict)
-        
-        node1_search_query = f"name: '{litra_property_dict['name']}', parent: {litra_property_dict['parent']}"
-        node2_search_query = f"name: '{litra_property_dict['parent'][0]}', parent: {litra_property_dict['parent'][1:]}"
-        create_relation(litra_label_list[2],node1_search_query,
-            stk_label_list[1],node2_search_query,
-                        'part_of')
-
-def create_nr_node(nr_property_list):
-    for nr_property_dict in nr_property_list:
-        create_node(nr_label_list, nr_property_dict)
-        
-        node1_search_query = f"name: '{nr_property_dict['name']}', parent: {nr_property_dict['parent']}"
-        node2_search_query = f"name: '{nr_property_dict['parent'][0]}', parent: {nr_property_dict['parent'][1:]}"
-        create_relation(nr_label_list[2],node1_search_query,
-            stk_label_list[1],node2_search_query,
-                        'part_of')
-        
-def create_sentence_node(sentence_property_list):
-    for sentence_property_dict in sentence_property_list:
-        create_node(sentence_label_list, sentence_property_dict)
-        
-        node1_search_query = f"name: '{sentence_property_dict['name']}', parent: {sentence_property_dict['parent']}"
-        node2_search_query = f"name: '{sentence_property_dict['parent'][0]}', parent: {sentence_property_dict['parent'][1:]}"
-        
-        create_relation(sentence_label_list[1],node1_search_query,
-            stk_label_list[0],node2_search_query,
-                        'part_of')        
 
 #%% Stk internal reference
 def _get_sentence_pkt_ref_numbers(text):
@@ -505,11 +68,7 @@ def stk_internal_references(sentence_property_list):
         stk_internal_ref_dict_list = stk_internal_ref_dict_list + stk_internal_ref_dicts
     return stk_internal_ref_query_list, stk_internal_ref_dict_list
 
-def create_stk_internal_ref_relations(stk_internal_ref_query_list):
-    for querys in stk_internal_ref_query_list:
-        create_relation(sentence_label_list[0],querys[0],
-            sentence_label_list[0],querys[1],
-                        'refers_to {type: "stk_internal"}')        
+      
 
 #%% Paragraph internal reference 
 #i.e. one stk reference another in the same paragraph.
@@ -734,12 +293,7 @@ def paragraph_internal_references(sentence_property_list):
         paragraph_internal_ref_dict_list = paragraph_internal_ref_dict_list + sentence_internal_ref_dicts
     return paragraph_internal_ref_query_list, paragraph_internal_ref_dict_list
                 
-
-def create_paragraph_internal_ref_relations(paragraph_internal_ref_query_list):
-    for querys in paragraph_internal_ref_query_list:
-        create_relation(sentence_label_list[0],querys[0],
-            sentence_label_list[0],querys[1],
-                        'refers_to {type: "paragraph_internal"}')                    
+                  
 
 #%% List internal reference
 
@@ -809,12 +363,6 @@ def list_internal_ref(sentence_property_list):
         
     return list_internal_ref_query_list, list_internal_ref_dict_list
         
-                    
-def create_list_internal_ref_relations(list_internal_ref_query_list):
-    for querys in list_internal_ref_query_list:
-        create_relation(sentence_label_list[0],querys[0],
-            sentence_label_list[0],querys[1],
-                        'refers_to {type: "list_internal"}')  
             
 
 #%% Relative paragraph internal references
@@ -861,19 +409,7 @@ def get_relative_stk_ref_dict_list(relative_stk_ref_sets_list):
     return relative_stk_ref_dict_list
 
 
-def _get_relative_stk_ref_query(sentence_property_dict, ref_stk):
-    node1_search_query = f"name: '{sentence_property_dict['name']}', parent: {sentence_property_dict['parent']}"
-    node2_parent_list = sentence_property_dict['parent'][-2:]
-    node2_search_query = f"name: '{ref_stk}', parent: {node2_parent_list}"
-    return [node1_search_query, node2_search_query]
 
-def create_relative_stk_ref_relation(relative_stk_ref_sets_list):
-    for relative_stk_ref_set in relative_stk_ref_sets_list:
-        for ref_stk in relative_stk_ref_set[1]:
-            querys = _get_relative_stk_ref_query(relative_stk_ref_set[0], ref_stk)
-            create_relation(sentence_label_list[0],querys[0],
-                sentence_label_list[0],querys[1],
-                            'refers_to {type: "paragraph_internal"}')
                
 #%% Specific paragraph references. References across the different paragraphs to specific paragraphs
 
@@ -1227,7 +763,7 @@ def _get_individual_ref_dict(p, text, paragraph_property_list):
 def _external_ref_present_in_sentence(text):
     external_refs_present = []
     for ref_cue in external_reference_cues:
-        if ref_cue.lower() in text.lower():
+        if ref_cue[0].lower() in text.lower():
             external_refs_present.append(ref_cue)
     return external_refs_present
 
@@ -1260,7 +796,7 @@ def _get_sentence_paragraph_specific_ref_list(text, paragraph_property_list):
             
     search_text_external = search_text_external.replace(', §','@@ §')
     for external_ref_cue in external_refs_present:
-        search_text_external = search_text_external.replace(f', i{external_ref_cue}',f'@@ i{external_ref_cue}') 
+        search_text_external = search_text_external.replace(f', i{external_ref_cue[0]}',f'@@ i{external_ref_cue[0]}') 
     search_text_external_split = re.split(',| efter | sammenholdt med ', search_text_external)
     
     for ref in potentially_external_ref_list:
@@ -1269,8 +805,8 @@ def _get_sentence_paragraph_specific_ref_list(text, paragraph_property_list):
         for text_ex in search_text_external_split:
             if test_ref_string in text_ex:
                 for external_ref_cue in external_refs_present:
-                    if external_ref_cue.lower() in text_ex.lower():
-                        ref['parent_law'] = external_ref_cue
+                    if external_ref_cue[0].lower() in text_ex.lower():
+                        ref['parent_law'] = external_ref_cue[1] if len(external_ref_cue[1]) >0 else external_ref_cue[0]
                         
                         sentence_paragraph_specific_ref_list.append(ref)
                         
@@ -1294,7 +830,7 @@ def _get_sentence_paragraph_specific_ref_list(text, paragraph_property_list):
             else:
                 ref['parent_law'] = external_refs_present[0]
                 sentence_paragraph_specific_ref_list.append(ref)
-    return sentence_paragraph_specific_ref_list #Should be a list of all law internal references! 
+    return sentence_paragraph_specific_ref_list 
 
 
 # Get query sub function for getting parents.
@@ -1363,24 +899,34 @@ def paragraph_specific_references(sentence_property_list, paragraph_property_lis
                 law_external_paragraph_specific_ref_list.append((sentence_property_dict, ref_instance))
                     
     return law_internal_paragraph_specific_ref_query_list, law_internal_paragraph_specific_ref_dict_list, law_external_paragraph_specific_ref_list
-            
-def create_law_internal_ref_relation(law_internal_ref_query_list):
-    for law_internal_ref_set in law_internal_ref_query_list:
-            create_relation(sentence_label_list[0],law_internal_ref_set[0],
-                sentence_label_list[0],law_internal_ref_set[1],
-                            'refers_to {type: "law_internal"}')            
+         
         
-#%% Internal references to the law as a whole.             
+#%% References to the law as a whole.             
 
-def internal_ref_to_whole_law(sentence_property_list):
+def ref_to_whole_law(sentence_property_list, law_external_paragraph_specific_ref_list):
     internal_ref_to_whole_law_list = []
+    output_law_external_paragraph_specific_ref_list = law_external_paragraph_specific_ref_list
     for sentence_property_dict in sentence_property_list:
         text = " " + sentence_property_dict['raw_text'].lower()
         for cue in internal_ref_to_whole_law_cues:
             if text.find(cue) > -1:
                 internal_ref_to_whole_law_list.append([sentence_property_dict['name'], sentence_property_dict['parent']])
                 break
-    return internal_ref_to_whole_law_list
+        for ex_cue in external_reference_cues:
+            if text.find(ex_cue[0]) > -1:
+                candidat = sentence_property_dict
+                already_listed = False
+                for ex_ref in law_external_paragraph_specific_ref_list:
+                    if candidat == ex_ref[0]:
+                        already_listed = True
+                        break
+                if already_listed is False:
+                    ref_instance = {'p_ref_list':[], 
+                                    'parent_law': ex_cue[1],
+                                    'ref_string': ex_cue[0],
+                                    'ref_type': 'law'}
+                    output_law_external_paragraph_specific_ref_list.append((candidat, ref_instance))
+    return internal_ref_to_whole_law_list, output_law_external_paragraph_specific_ref_list
 
 def get_internal_ref_to_whole_law_dict_list(internal_ref_to_whole_law_list, lov_name, lov_shortname):
     internal_ref_to_whole_law_dict_list = []
@@ -1391,369 +937,5 @@ def get_internal_ref_to_whole_law_dict_list(internal_ref_to_whole_law_list, lov_
             internal_ref_to_whole_law_dict_list.append(ref_dict)
     return internal_ref_to_whole_law_dict_list
     
-def create_internal_ref_to_whole_law_relation(internal_ref_to_whole_law_list):
-    for internal_ref_to_whole_law in internal_ref_to_whole_law_list:
-            node1_search_query = f"name: '{internal_ref_to_whole_law[0]}', parent: {internal_ref_to_whole_law[1]}"
-            node2_search_query = f"name: '{lov_name}', shortName: '{lov_shortname}'"
-            create_relation(sentence_label_list[0],node1_search_query,
-                sentence_label_list[0],node2_search_query,
-                            'refers_to {type: "law_internal"}')               
-
-#%% Get law_document_dict
-def concatenate_lists(list_of_lists):
-    output_list = []
-    for l in list_of_lists:
-        output_list = output_list + l
-    return output_list
-
-def _get_legal_concept_id(name, parent_list):
-    lc_id = name
-    for parent in parent_list:
-        lc_id = lc_id + '_' + parent
-    return lc_id
-    
-def _get_sentence_bow_meanvector(sentence_raw_text, stopwords, word_embeddings):
-    raw_text = sentence_raw_text.lower()
-    for exception in abbreviations:
-        raw_text = raw_text.replace(exception[0], '')
-    
-    raw_text_clean = re.sub('[^a-zæøå ]+', '', raw_text)
-    
-    words = []
-    for word in raw_text_clean.split():
-        if word not in stopwords:
-            words.append(word)
-    
-    bow = dict()
-    oov_list = list()
-    word_vector_sum = np.array([0]*word_embeddings.vector_size, dtype='float32')
-    word_count = 0
-    for word in words:
-        try:
-            word_vector = word_embeddings[word]
-            word_vector_sum += word_vector
-            word_count += 1
-            if word in bow.keys():
-                bow[word] += 1
-            else:
-                bow[word] = 1
-        except:
-            word_vector = None
-            oov_list.append(word)
-        
-    if word_count > 0:
-        word_vector_mean = word_vector_sum/word_count
-    else:
-        word_vector_mean = None
-    return bow, word_vector_mean, oov_list
-
-def _get_law_document_dict_raw(url):
-    
-    #Lov
-    lov_soup, lov_property_dict, lov_name, lov_shortname = law_property_gen(url)
-    
-    #Paragraphs
-    (paragraph_property_list, chapter_property_list) = paragraph_property_gen(lov_soup, lov_shortname)
-    
-    # Stk   
-    stk_property_list = stk_property_gen(paragraph_property_list)
-    
-    #Litra, Nr and sentences
-    (litra_property_list,
-    nr_property_list,
-    sentence_property_list) = sentence_litra_nr_property_gen(stk_property_list)
-
-    #----------------------------------------------------------------------------                                                             
-    ## References
-    stk_internal_ref_query_list, stk_internal_ref_dict_list = stk_internal_references(sentence_property_list)
-        
-    paragraph_internal_references_query_list, paragraph_internal_ref_dict_list = paragraph_internal_references(sentence_property_list)
-
-    relative_stk_ref_sets_list = get_relative_ref_sets(sentence_property_list) #only in funktionærloven
-    relative_stk_ref_dict_list = get_relative_stk_ref_dict_list(relative_stk_ref_sets_list)
-        
-    list_internal_ref_query_list, list_internal_ref_dict_list = list_internal_ref(sentence_property_list) #only in funktionærloven
-
-    (law_internal_paragraph_specific_ref_query_list,
-     law_internal_paragraph_specific_ref_dict_list,
-     law_external_paragraph_specific_ref_list) = paragraph_specific_references(sentence_property_list, paragraph_property_list)
-
-    internal_ref_to_whole_law_list = internal_ref_to_whole_law(sentence_property_list)
-    internal_ref_to_whole_law_dict_list = get_internal_ref_to_whole_law_dict_list(internal_ref_to_whole_law_list, lov_name, lov_shortname)
-    
-    # internal ref dict list
-    internal_ref_dict_list = concatenate_lists([stk_internal_ref_dict_list,
-                                                paragraph_internal_ref_dict_list,
-                                                relative_stk_ref_dict_list,
-                                                law_internal_paragraph_specific_ref_dict_list,
-                                                internal_ref_to_whole_law_dict_list
-                                                ])
-                            
-    #missing external references to document as a whole or chapters.
-    
-    law_document_dict_raw = {'law': lov_property_dict, 'law_label': lov_label_list,
-                         'chapter': chapter_property_list, 'chapter_label': chapter_label_list,
-                         'paragraph': paragraph_property_list, 'paragraph_label': paragraph_label_list,
-                         'stk': stk_property_list, 'stk_label': stk_label_list,
-                         'litra': litra_property_list, 'litra_label': litra_label_list,
-                         'nr': nr_property_list, 'nr_label': nr_label_list,
-                         'sentence': sentence_property_list, 'sentence_label': sentence_label_list,
-                         'internal_ref': internal_ref_dict_list,
-                         'external_ref': law_external_paragraph_specific_ref_list
-                         }
-    
-    return law_document_dict_raw
-    
-def get_law_document_dict(url, stopwords, word_embeddings):
-    law_document_dict_raw = _get_law_document_dict_raw(url)
-    legal_concepts = {}
-    
-    # law
-    law = law_document_dict_raw['law']
-    law_id = _get_legal_concept_id(law['shortName'],[])
-    new_law_property_dict = {
-        'id': law_id,
-        'name': law['name'],
-        'shortName': law['shortName'],
-        'title': law['title'],
-        'date_of_publication': law['date_of_publication'],
-        'ressort': law['ressort'],
-        'retsinfo_id': law['id'],
-        'url': url,
-        'labels': law_document_dict_raw['law_label'],
-        'bow': dict(),
-        'bow_meanvector': np.array([0]*word_embeddings.vector_size, dtype='float32'),
-        'concept_bow': dict(),
-        'concept_vector': np.array([0]*word_embeddings.vector_size, dtype='float32'),
-        'neighbours': []
-        }
-    
-    legal_concepts[law_id] = new_law_property_dict
-    
-    # chapter
-    chapter_list = law_document_dict_raw['chapter']
-    for chapter in chapter_list:
-        chapter_id = _get_legal_concept_id(chapter['name'],chapter['parent'])
-        new_chapter_property_dict = {
-            'id': chapter_id,
-            'name': chapter['name'],
-            'shortName': chapter['shortName'],
-            'position': chapter['position'],
-            'parent': chapter['parent'],
-            'labels': law_document_dict_raw['chapter_label'],
-            'bow': dict(),
-            'bow_meanvector': np.array([0]*word_embeddings.vector_size, dtype='float32'),
-            'concept_bow': dict(),
-            'concept_vector': np.array([0]*word_embeddings.vector_size, dtype='float32')
-            }
-        
-        parent_id = _get_legal_concept_id(chapter['parent'][0],chapter['parent'][1:])
-        new_chapter_property_dict['neighbours'] = [{'neighbour':parent_id, 'type': 'parent'}]
-        legal_concepts[parent_id]['neighbours'].append({'neighbour':chapter_id, 'type': 'child'})
-        
-        
-        legal_concepts[chapter_id] = new_chapter_property_dict
-    
-    # paragraph
-    paragraph_list = law_document_dict_raw['paragraph']
-    for paragraph in paragraph_list:
-        paragraph_id = _get_legal_concept_id(paragraph['name'],paragraph['parent'])
-        new_paragraph_property_dict = {
-            'id': paragraph_id,
-            'name': paragraph['name'],
-            'position': paragraph['position'],
-            'parent': paragraph['parent'],
-            'labels': law_document_dict_raw['paragraph_label'],
-            'bow': dict(),
-            'bow_meanvector': np.array([0]*word_embeddings.vector_size, dtype='float32'),
-            'concept_bow': dict(),
-            'concept_vector': np.array([0]*word_embeddings.vector_size, dtype='float32')
-            }
-        
-        parent_id = _get_legal_concept_id(paragraph['parent'][0],paragraph['parent'][1:])
-        new_paragraph_property_dict['neighbours'] = [{'neighbour':parent_id, 'type': 'parent'}]
-        legal_concepts[parent_id]['neighbours'].append({'neighbour':paragraph_id, 'type': 'child'})
-        
-        legal_concepts[paragraph_id] = new_paragraph_property_dict
-    
-    # stk
-    stk_list = law_document_dict_raw['stk']
-    for stk in stk_list:
-        stk_id = _get_legal_concept_id(stk['name'],stk['parent'])
-        new_stk_property_dict = {
-            'id': stk_id,
-            'name': stk['name'],
-            'position': stk['position'],
-            'parent': stk['parent'],
-            'labels': law_document_dict_raw['stk_label'],
-            'bow': dict(),
-            'bow_meanvector': np.array([0]*word_embeddings.vector_size, dtype='float32'),
-            'concept_bow': dict(),
-            'concept_vector': np.array([0]*word_embeddings.vector_size, dtype='float32')
-            }
-        
-        parent_id = _get_legal_concept_id(stk['parent'][0],stk['parent'][1:])
-        new_stk_property_dict['neighbours'] = [{'neighbour':parent_id, 'type': 'parent'}]
-        legal_concepts[parent_id]['neighbours'].append({'neighbour':stk_id, 'type': 'child'})
-        
-        legal_concepts[stk_id] = new_stk_property_dict
-        
-    # litra
-    litra_list = law_document_dict_raw['litra']
-    for litra in litra_list:
-        litra_id = _get_legal_concept_id(litra['name'],litra['parent'])
-        new_litra_property_dict = {
-            'id': litra_id,
-            'name': litra['name'],
-            'position': litra['position'],
-            'parent': litra['parent'],
-            'labels': law_document_dict_raw['litra_label'],
-            'bow': dict(),
-            'bow_meanvector': np.array([0]*word_embeddings.vector_size, dtype='float32'),
-            'concept_bow': dict(),
-            'concept_vector': np.array([0]*word_embeddings.vector_size, dtype='float32')
-            }
-        
-        parent_id = _get_legal_concept_id(litra['parent'][0],litra['parent'][1:])
-        new_litra_property_dict['neighbours'] = [{'neighbour':parent_id, 'type': 'parent'}]
-        legal_concepts[parent_id]['neighbours'].append({'neighbour':litra_id, 'type': 'child'})
-        
-        legal_concepts[litra_id] = new_litra_property_dict
-        
-    # nr
-    nr_list = law_document_dict_raw['nr']
-    for nr in nr_list:
-        nr_id = _get_legal_concept_id(nr['name'],nr['parent'])
-        new_nr_property_dict = {
-            'id': nr_id,
-            'name': nr['name'],
-            'position': nr['position'],
-            'parent': nr['parent'],
-            'labels': law_document_dict_raw['nr_label'],
-            'bow': dict(),
-            'bow_meanvector': np.array([0]*word_embeddings.vector_size, dtype='float32'),
-            'concept_bow': dict(),
-            'concept_vector': np.array([0]*word_embeddings.vector_size, dtype='float32')
-            }
-        
-        parent_id = _get_legal_concept_id(nr['parent'][0],nr['parent'][1:])
-        new_nr_property_dict['neighbours'] = [{'neighbour':parent_id, 'type': 'parent'}]
-        legal_concepts[parent_id]['neighbours'].append({'neighbour':nr_id, 'type': 'child'})
-        
-        legal_concepts[nr_id] = new_nr_property_dict
-        
-    # sentence
-    sentence_list = law_document_dict_raw['sentence']
-    oov_list = list()
-    for sentence in sentence_list:
-        bow, meanvector, sentence_oov_list = _get_sentence_bow_meanvector(sentence['raw_text'], stopwords, word_embeddings)
-        sentence_id = _get_legal_concept_id(sentence['name'],sentence['parent'])
-        new_sentence_property_dict = {
-            'id': sentence_id,
-            'name': sentence['name'],
-            'position': sentence['position'],
-            'parent': sentence['parent'],
-            'raw_text': sentence['raw_text'],
-            'labels': law_document_dict_raw['sentence_label'],
-            'bow': bow,
-            'concept_bow': bow,
-            'bow_meanvector': meanvector,
-            'concept_vector': meanvector
-            }
-        
-        oov_list = oov_list + sentence_oov_list
-        
-        parent_id = _get_legal_concept_id(sentence['parent'][0],sentence['parent'][1:])
-        new_sentence_property_dict['neighbours'] = [{'neighbour':parent_id, 'type': 'parent'}]
-        legal_concepts[parent_id]['neighbours'].append({'neighbour':sentence_id, 'type': 'child'})
-        
-        legal_concepts[sentence_id] = new_sentence_property_dict
-        
-    for ref in law_document_dict_raw['internal_ref']:
-        ref_from_id = _get_legal_concept_id(ref['ref_from']['name'], ref['ref_from']['parent'])
-        try:
-            ref_to_id = _get_legal_concept_id(ref['ref_to']['name'], ref['ref_to']['parent'])
-        except:
-            ref_to_id =  ref['ref_to']['shortName']
-        try:
-            legal_concepts[ref_to_id]['neighbours'].append({'neighbour':ref_from_id, 'type': 'ref_from'})
-            legal_concepts[ref_from_id]['neighbours'].append({'neighbour':ref_to_id, 'type': 'ref_to'})
-        except:
-            legal_concepts[ref_from_id]['neighbours'].append({'neighbour':ref_to_id, 'type': 'ref_to_UNKNOWN'})
-    law_doc_dict = {
-        'legal_concepts': legal_concepts,
-        'external_ref': law_document_dict_raw['external_ref'],
-        'oov_list': oov_list
-        }
-    
-    return law_doc_dict
-    
-#%% CREATING litra + number + sentence nodes in neo4j      
-if __name__ == "__main__":
-
-    
-    #funktionærloven
-    url = 'https://www.retsinformation.dk/api/document/eli/lta/2017/1002'
-    #barselsloven
-    url = 'https://www.retsinformation.dk/api/document/eli/lta/2021/235'
-    #lov om tidsbegrænset anslttekse
-    url = 'https://www.retsinformation.dk/api/document/eli/lta/2008/907'
-    
-    #Lov
-    lov_soup, lov_property_dict, lov_name, lov_shortname = law_property_gen(url)
-    
-    #Paragraphs
-    (paragraph_property_list, chapter_property_list) = paragraph_property_gen(lov_soup, lov_shortname)
-    
-    # Stk   
-    stk_property_list = stk_property_gen(paragraph_property_list)
-    
-    #Litra, Nr and sentences
-    (litra_property_list,
-    nr_property_list,
-    sentence_property_list) = sentence_litra_nr_property_gen(stk_property_list)
-                                                             
-    ## References
-    stk_internal_ref_query_list, stk_internal_ref_dict_list = stk_internal_references(sentence_property_list)
-        
-    paragraph_internal_ref_query_list, paragraph_internal_ref_dict_list = paragraph_internal_references(sentence_property_list)
-
-    relative_stk_ref_sets_list = get_relative_ref_sets(sentence_property_list) #only in funktionærloven
-    relative_stk_ref_dict_list = get_relative_stk_ref_dict_list(relative_stk_ref_sets_list)    
-    
-    list_internal_ref_query_list, list_internal_ref_dict_list = list_internal_ref(sentence_property_list) #only in funktionærloven
-
-    (law_internal_paragraph_specific_ref_query_list,
-     law_internal_paragraph_specific_ref_dict_list,
-     law_external_paragraph_specific_ref_list) = paragraph_specific_references(sentence_property_list, paragraph_property_list)
-
-    internal_ref_to_whole_law_list = internal_ref_to_whole_law(sentence_property_list)
-    internal_ref_to_whole_law_dict_list = get_internal_ref_to_whole_law_dict_list(internal_ref_to_whole_law_list, lov_name, lov_shortname)
-                                             
-    
-    #create nodes                                                         
-    create_node(lov_label_list, lov_property_dict) # <- CREATING NODE in neo4j
-    
-    create_chapter_node(chapter_property_list) # <- CREATING NODES in neo4j
-    create_paragraph_node(paragraph_property_list) # <- CREATING NODES in neo4j
-    
-    create_stk_node(stk_property_list) # <- CREATING NODES in neo4j
-    
-    create_litra_node(litra_property_list) # <- CREATING NODES in neo4j
-    create_nr_node(nr_property_list) # <- CREATING NODES in neo4j
-    create_sentence_node(sentence_property_list) # <- CREATING NODES in neo4j
-
-    #create relations
-    create_stk_internal_ref_relations(stk_internal_ref_query_list)
-
-    create_paragraph_internal_ref_relations(paragraph_internal_references_query_list) #<- CREATING RELATIONS in neo4j
-    
-    create_relative_stk_ref_relation(relative_stk_ref_sets_list)    
-
-    create_list_internal_ref_relations(list_internal_ref_query_list)
-
-    create_law_internal_ref_relation(law_internal_paragraph_specific_ref_query_list)
-
-    create_internal_ref_to_whole_law_relation(internal_ref_to_whole_law_list)
-
+              
 

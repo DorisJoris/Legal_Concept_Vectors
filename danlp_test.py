@@ -79,8 +79,7 @@ def data_cleaner(directory, stopwords):
                 print(f"{percent} % done")
 
 #%% taken from https://stackoverflow.com/q/60852962
-class Corpus():
-    """Iterate over sentences from the corpus."""
+class training_corpus():
     def __init__(self):
         self.files = listdir("clean text")
         self.run = 0
@@ -89,15 +88,14 @@ class Corpus():
         now = datetime.now().strftime("%H:%M:%S")
         print(f"Starting data-iteration {self.run} at {now}")
         print("---")
-        for fname in self.files:
-            for line in open("clean text/"+fname, encoding="UTF-8"):
+        for file in self.files:
+            for line in open("clean text/"+file, encoding="UTF-8"):
                 words = line.split()
                 yield words
         self.run += 1
 
 #%% callback taken from https://stackoverflow.com/a/54891714
 class callback(CallbackAny2Vec):
-    '''Callback to print loss after each epoch.'''
 
     def __init__(self):
         self.epoch = 0
@@ -108,63 +106,65 @@ class callback(CallbackAny2Vec):
         print(f"End epoch at {epoch_end_time}")
         print('Loss after epoch {}: {}'.format(self.epoch, loss))
         self.epoch += 1
-        
-#%% Data cleaning
-# I have added retsinformationdk + skat + retspraksis + tv2r + wiki + adl + danavis 
-#               + dannet + depbank + ep + ft + gutenberg + hest + opensub + relig + wikibooks
-
-with open("stopord.txt","r", encoding="UTF-8") as sw_file:
-    stopwords = [line.strip() for line in sw_file]
-
-start = datetime.now().strftime("%H:%M:%S")
-print(f"Started at {start}")
 
 
-data_cleaner("dagw/sektioner/wikibooks", stopwords)
-
-
-print(f"Started at {start}")
-end = datetime.now().strftime("%H:%M:%S")
-print(f"Finished at {end}")
-
-
-#%% Model train 
-sentences = Corpus()
-print("Skipgram training started at:")
-print(datetime.now().strftime("%H:%M:%S"))
-model = Word2Vec(sentences, size=300, window=5, min_count=2, workers=18, sg=1, 
-                 compute_loss=True, callbacks=[callback()])
-
-model.save("models/word2vec_300_skipgram_w5_mc2_version7.model")
-
-print("Skipgram training finnished at:")
-print(datetime.now().strftime("%H:%M:%S"))
-
-print("----------------------------------------------------")
-
-print("CBOW training started at:")
-print(datetime.now().strftime("%H:%M:%S"))
-model = Word2Vec(sentences, size=300, window=5, min_count=2, workers=18, sg=0, 
-                 compute_loss=True, callbacks=[callback()])
-
-model.save("models/word2vec_300_CBOW_w5_mc2_version8.model")
-
-print("CBOW training finnished at:")
-print(datetime.now().strftime("%H:%M:%S"))
-
-#version2 only trained on retsinformationdk
-#version3 trained on retsinformationdk + skat + retspraksis + tv2r + wiki -> trainingstid ca. 29min
-#version4 trained on retsinformationdk + skat + retspraksis + tv2r + wiki -> trainingstid ca. 30min
-
-#version 5 & 6 are trained on:
-    # retsinformationdk + skat + retspraksis + tv2r + wiki + adl + danavis
-    # 
-
-#%% Model test
-
-test_model = Word2Vec.load("models/word2vec_300_CBOW_w5_mc2_version6.model")
-
-test_model.wv.vectors.shape
-
-test_model.wv["funktionær"]
+if __name__ == "__main__":        
+    #%% Data cleaning
+    # I have added retsinformationdk + skat + retspraksis + tv2r + wiki + adl + danavis 
+    #               + dannet + depbank + ep + ft + gutenberg + hest + opensub + relig + wikibooks
+    
+    with open("stopord.txt","r", encoding="UTF-8") as sw_file:
+        stopwords = [line.strip() for line in sw_file]
+    
+    start = datetime.now().strftime("%H:%M:%S")
+    print(f"Started at {start}")
+    
+    
+    data_cleaner("dagw/sektioner/wikibooks", stopwords)
+    
+    
+    print(f"Started at {start}")
+    end = datetime.now().strftime("%H:%M:%S")
+    print(f"Finished at {end}")
+    
+    
+    #%% Model train 
+    sentences = training_corpus()
+    print("Skipgram training started at:")
+    print(datetime.now().strftime("%H:%M:%S"))
+    model = Word2Vec(sentences, size=300, window=5, min_count=2, workers=18, sg=1, 
+                     compute_loss=True, callbacks=[callback()])
+    
+    model.save("models/word2vec_300_skipgram_w5_mc2_version7.model")
+    
+    print("Skipgram training finnished at:")
+    print(datetime.now().strftime("%H:%M:%S"))
+    
+    print("----------------------------------------------------")
+    
+    print("CBOW training started at:")
+    print(datetime.now().strftime("%H:%M:%S"))
+    model = Word2Vec(sentences, size=300, window=5, min_count=2, workers=18, sg=0, 
+                     compute_loss=True, callbacks=[callback()])
+    
+    model.save("models/word2vec_300_CBOW_w5_mc2_version8.model")
+    
+    print("CBOW training finnished at:")
+    print(datetime.now().strftime("%H:%M:%S"))
+    
+    #version2 only trained on retsinformationdk
+    #version3 trained on retsinformationdk + skat + retspraksis + tv2r + wiki -> trainingstid ca. 29min
+    #version4 trained on retsinformationdk + skat + retspraksis + tv2r + wiki -> trainingstid ca. 30min
+    
+    #version 5 & 6 are trained on:
+        # retsinformationdk + skat + retspraksis + tv2r + wiki + adl + danavis
+        # 
+    
+    #%% Model test
+    
+    test_model = Word2Vec.load("models/word2vec_300_CBOW_w5_mc2_version6.model")
+    
+    test_model.wv.vectors.shape
+    
+    test_model.wv["funktionær"]
 
