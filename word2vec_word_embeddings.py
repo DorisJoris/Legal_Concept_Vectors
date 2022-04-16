@@ -4,14 +4,12 @@ Created on Sun Mar 13 22:09:41 2022
 
 @author: bejob
 """
-from gensim.test.utils import common_texts, get_tmpfile
 from gensim.models import Word2Vec
 from gensim.models.callbacks import CallbackAny2Vec
 import re
 from os import listdir
 from legal_concept_resources import abbreviations
 
-from nltk.stem.snowball import DanishStemmer
 
 from datetime import datetime
 

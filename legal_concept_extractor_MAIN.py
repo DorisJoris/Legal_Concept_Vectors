@@ -28,7 +28,7 @@ from legal_concept_resources import sentence_label_list
 
 import legal_concept_extractor_LBK as LBK_extractor
 import legal_concept_extractor_LOV as LOV_extractor
-import reference_extractor as ref_extractor
+import legal_concept_reference_extractor as ref_extractor
 
 #%% Get law json
 def _get_law_json_doc_type(url):
