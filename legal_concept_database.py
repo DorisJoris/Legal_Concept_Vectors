@@ -23,12 +23,12 @@ class lc_database:
                                                     self.stopwords, 
                                                     self.word_embeddings)
         
+        self.doc_wordfreq = pd.DataFrame()
+        self.doc_wordfreq = self.doc_wordfreq.append(lc_tf_idf.add_to_doc_wordfreq_dataframe(init_lc_doc['legal_concepts']))
+        
         init_lc_doc = lc_vc.concept_vector_init(init_lc_doc, 
                                                     self.hierachical_label_list, 
                                                     self.word_embeddings)
-        
-        self.doc_wordfreq = pd.DataFrame()
-        self.doc_wordfreq = self.doc_wordfreq.append(lc_tf_idf.add_to_doc_wordfreq_dataframe(init_lc_doc['legal_concepts']))
         
         self.external_ref = init_lc_doc['external_ref']
         self.legal_concepts = init_lc_doc['legal_concepts']
@@ -48,11 +48,13 @@ class lc_database:
                                                         self.stopwords, 
                                                         self.word_embeddings)
         
+        self.doc_wordfreq = self.doc_wordfreq.append(lc_tf_idf.add_to_doc_wordfreq_dataframe(to_be_added_doc['legal_concepts']))
+        
         to_be_added_doc = lc_vc.concept_vector_init(to_be_added_doc, 
                                                         self.hierachical_label_list, 
                                                         self.word_embeddings)
         
-        self.doc_wordfreq = self.doc_wordfreq.append(lc_tf_idf.add_to_doc_wordfreq_dataframe(to_be_added_doc['legal_concepts']))
+       
         
         self.legal_concepts.update(to_be_added_doc['legal_concepts'])
         
@@ -233,12 +235,12 @@ class lc_database:
         bow_types = [('wmd_bow','bow'), ('wmd_concept_bow','concept_bow')]
         
         concept_count = self.concept_count()
-        progress = 0
+        progress = (1/concept_count)*100
         
         
         for key in self.legal_concepts.keys():
             progress += (1/concept_count)*100
-            print(f"\rProgress: [{('#' * (int(progress)//5)) + ('_' * ((100-int(progress))//5))}] ({progress}%)", end='\r')
+            print(f"\rDistance calculation: [{('#' * (int(progress)//5)) + ('_' * (20-(int(progress)//5)))}] ({int(progress//1)}%)", end='\r')
             
             for vector_type in vector_types:
                 concept_vector = copy.copy(self.legal_concepts[key][vector_type])
