@@ -7,13 +7,10 @@ import numpy as np
 from danlp.models.embeddings  import load_wv_with_gensim
 from gensim.models import Word2Vec
 from gensim.models.callbacks import CallbackAny2Vec
-from danlp_test import callback
+from word2vec_word_embeddings import callback
 
 
-
-import legal_concept_vector_calculator
 import legal_concept_extractor_MAIN 
-import legal_concept_extractor_LBK
 import legal_concept_database
 
 
@@ -35,7 +32,9 @@ if __name__ == "__main__":
     test_database = legal_concept_database.lc_database(url1, stopwords, word_embeddings)
     
     example_lc = test_database.random_lc()
-        
+    doc_wordfreq_df = test_database.doc_wordfreq    
+
+    
     #barselsloven
     url2 = 'https://www.retsinformation.dk/api/document/eli/lta/2021/235'
     #barselsloven = legal_concept_extractor_MAIN.get_law_document_dict(url2, stopwords, word_embeddings)

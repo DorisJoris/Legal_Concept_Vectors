@@ -2,13 +2,14 @@
 #%% Import
 import random
 import numpy as np
+import pandas as pd
 import copy
 
 import legal_concept_extractor_MAIN as lc_em
 import legal_concept_vector_calculator as lc_vc
 import legal_concept_text_cleaning as lc_text_cleaning
 import legal_concept_wmd
-import helper_functions
+import legal_concept_tf_idf as lc_tf_idf
 
 #%% Database class
 
@@ -25,6 +26,9 @@ class lc_database:
         init_lc_doc = lc_vc.concept_vector_init(init_lc_doc, 
                                                     self.hierachical_label_list, 
                                                     self.word_embeddings)
+        
+        self.doc_wordfreq = pd.DataFrame()
+        self.doc_wordfreq = self.doc_wordfreq.append(lc_tf_idf.add_to_doc_wordfreq_dataframe(init_lc_doc['legal_concepts']))
         
         self.external_ref = init_lc_doc['external_ref']
         self.legal_concepts = init_lc_doc['legal_concepts']
@@ -47,6 +51,8 @@ class lc_database:
         to_be_added_doc = lc_vc.concept_vector_init(to_be_added_doc, 
                                                         self.hierachical_label_list, 
                                                         self.word_embeddings)
+        
+        self.doc_wordfreq = self.doc_wordfreq.append(lc_tf_idf.add_to_doc_wordfreq_dataframe(to_be_added_doc['legal_concepts']))
         
         self.legal_concepts.update(to_be_added_doc['legal_concepts'])
         

@@ -8,12 +8,13 @@ Created on Fri Mar 18 11:05:58 2022
 #%% Import
 
 import numpy as np
+
 import random
-import copy
+
 
 #%% Concept_vector initializer (only based on the children)
 def concept_vector_init(document_dict, hierachical_label_list, word_embeddings): #The heirachical_label_list should be sorted lowest to highest hierachy.
-       
+    
     for label in hierachical_label_list:
         for legal_concept_key in document_dict['legal_concepts'].keys():
             if label in document_dict['legal_concepts'][legal_concept_key]['labels']:
