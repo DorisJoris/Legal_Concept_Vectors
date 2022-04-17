@@ -79,7 +79,7 @@ def data_cleaner(directory, stopwords):
 #%% taken from https://stackoverflow.com/q/60852962
 class training_corpus():
     def __init__(self):
-        self.files = listdir("clean text")
+        self.files = listdir("C:/Users/bejob/Documents/legal concept data/clean text")
         self.run = 0
         
     def __iter__(self):
@@ -87,7 +87,7 @@ class training_corpus():
         print(f"Starting data-iteration {self.run} at {now}")
         print("---")
         for file in self.files:
-            for line in open("clean text/"+file, encoding="UTF-8"):
+            for line in open("C:/Users/bejob/Documents/legal concept data/clean text/"+file, encoding="UTF-8"):
                 words = line.split()
                 yield words
         self.run += 1
@@ -130,10 +130,10 @@ if __name__ == "__main__":
     sentences = training_corpus()
     print("Skipgram training started at:")
     print(datetime.now().strftime("%H:%M:%S"))
-    model = Word2Vec(sentences, size=300, window=5, min_count=2, workers=18, sg=1, 
+    model = Word2Vec(sentences, size=100, window=5, min_count=2, workers=18, sg=1, 
                      compute_loss=True, callbacks=[callback()])
     
-    model.save("models/word2vec_300_skipgram_w5_mc2_version7.model")
+    model.save("models/word2vec_100_skipgram_w5_mc2_version7.model")
     
     print("Skipgram training finnished at:")
     print(datetime.now().strftime("%H:%M:%S"))
@@ -142,10 +142,10 @@ if __name__ == "__main__":
     
     print("CBOW training started at:")
     print(datetime.now().strftime("%H:%M:%S"))
-    model = Word2Vec(sentences, size=300, window=5, min_count=2, workers=18, sg=0, 
+    model = Word2Vec(sentences, size=100, window=5, min_count=2, workers=18, sg=0, 
                      compute_loss=True, callbacks=[callback()])
     
-    model.save("models/word2vec_300_CBOW_w5_mc2_version8.model")
+    model.save("models/word2vec_100_CBOW_w5_mc2_version8.model")
     
     print("CBOW training finnished at:")
     print(datetime.now().strftime("%H:%M:%S"))

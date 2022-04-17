@@ -13,7 +13,7 @@ from word2vec_word_embeddings import callback
 import legal_concept_extractor_MAIN 
 import legal_concept_database
 
-
+from tabulate import tabulate
     
 #%% App
 if __name__ == "__main__":
@@ -38,9 +38,18 @@ if __name__ == "__main__":
     url3 = 'https://www.retsinformation.dk/api/document/eli/lta/2008/907'
     test_database.add_retsinfo_doc(url3)
     
-    test_database.connect_ext_ref()
+    #lov om finansiel virksomhed (Ram explosion)
+    #url4 = 'https://www.retsinformation.dk/api/document/eli/lta/2022/406'
+    #test_database.add_retsinfo_doc(url4)
     
-    doc_wordfreq_df = test_database.doc_wordfreq    
+    #lov om investeringsforeninger m.v.
+    url5 = 'https://www.retsinformation.dk/api/document/eli/lta/2022/336'
+    test_database.add_retsinfo_doc(url5)
+    
+    print(len(test_database.external_ref))
+    print(test_database.concept_count())
+    test_database.connect_ext_ref()
+    test_idf = test_database.word_idf    
     
     test_database.calculate_concept_vector()
     test_database.calculate_concept_bow()
@@ -57,7 +66,6 @@ if __name__ == "__main__":
     
     test_database.calculate_min_dist()
     test_min_dist = test_database.input_min_dist
-
 
     vec_tekniske = word_embeddings['tekniske']
     vec_teknisk = word_embeddings['teknisk']

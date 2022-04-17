@@ -27,6 +27,8 @@ def law_property_gen(lov_json):
     lov_html = lov_json['documentHtml'][0:lov_html_end]
     lov_soup = bs(lov_html, 'html.parser')
     
+    for p in lov_soup.find_all("p",attrs={'class':'TekstGenerel'}):
+        p.unwrap()
     
     try:
         lov_name = lov_json["popularTitle"]
@@ -39,8 +41,8 @@ def law_property_gen(lov_json):
                         "date_of_publication":lov_json["metadata"][0]["displayValue"],
                         "ressort": lov_json["ressort"],
                         "id": lov_json["id"],
-                        'html':lov_html,
-                        'raw_text':lov_soup.text}
+                        'html':lov_html}#,
+                        #'raw_text':lov_soup.text}
     
     lov_name = lov_property_dict['name']
     lov_shortname = lov_property_dict['shortName']
@@ -64,11 +66,19 @@ def _paragraph_sorting_raw(lov_soup):
     pees = lov_soup.select('p')
     p_nr = 0
     paragraphs_raw_dict_list = []
+    section_nr = 0
+    section_name = ''
     ch_nr = 0
     ch_name = ''
     for p in pees:
         if p['class'][0] == 'IkraftTekst':
             break
+        if p['class'][0] == 'Afsnit':
+            section_nr += 1
+            continue
+        if p['class'][0] == 'AfsnitOverskrift':
+            section_name = p.text
+            continue
         if p['class'][0] == 'Kapitel':
             ch_nr += 1
             continue
@@ -83,6 +93,8 @@ def _paragraph_sorting_raw(lov_soup):
             p_nr += 1
             paragraphs_raw_dict_list.append({'paragraph_content':[],
                                              'paragraph_id': p_nr,
+                                             'section_nr': section_nr,
+                                             'section_name': section_name,
                                              'chapter_nr': ch_nr,
                                              'chapter_name': ch_name})
         if p_nr > 0:
@@ -93,25 +105,48 @@ def _paragraph_sorting_raw(lov_soup):
 def paragraph_property_gen(lov_soup, lov_shortname):
     paragraphs_raw_dict_list = _paragraph_sorting_raw(lov_soup)
     paragraph_property_list = []
+    section_property_list = []
     chapter_property_list = []
     p_nr = 0
+    section_nr = 0
     ch_nr = 0
     for p_dict in paragraphs_raw_dict_list:
         p = p_dict['paragraph_content']
         p_nr +=1
         name = p[0].find_all(attrs={"class": "ParagrafNr"})[0].string.replace('§ ', '§\xa0')
-        if p_dict['chapter_nr']>0:
-            parents = [f"Kapitel {p_dict['chapter_nr']}", lov_shortname]
-            if ch_nr != p_dict['chapter_nr']:
-                ch_nr = p_dict['chapter_nr']
-                chapter_property_dict = {'name': f"Kapitel {p_dict['chapter_nr']}",
-                                         'shortName': p_dict['chapter_name'],
-                                         'position': p_dict['chapter_nr'],
+        if p_dict['section_nr']>0:
+            parents = [f"Afsnit {p_dict['section_nr']}", lov_shortname]
+            if section_nr != p_dict['section_nr']:
+                section_nr = p_dict['section_nr']
+                section_property_dict = {'name': f"Afsnit {p_dict['section_nr']}",
+                                         'shortName': p_dict['section_name'],
+                                         'position': p_dict['section_nr'],
                                          'parent': [lov_shortname]
                                          }
-                chapter_property_list.append(chapter_property_dict)
+                section_property_list.append(section_property_dict)
+            if p_dict['chapter_nr']>0:
+                if ch_nr != p_dict['chapter_nr']:
+                    ch_nr = p_dict['chapter_nr']
+                    chapter_property_dict = {'name': f"Kapitel {p_dict['chapter_nr']}",
+                                             'shortName': p_dict['chapter_name'],
+                                             'position': p_dict['chapter_nr'],
+                                             'parent': parents
+                                             }
+                    chapter_property_list.append(chapter_property_dict)
+                parents = [f"Kapitel {p_dict['chapter_nr']}"] + parents
         else:
-            parents = [lov_shortname]
+            if p_dict['chapter_nr']>0:
+                parents = [f"Kapitel {p_dict['chapter_nr']}", lov_shortname]
+                if ch_nr != p_dict['chapter_nr']:
+                    ch_nr = p_dict['chapter_nr']
+                    chapter_property_dict = {'name': f"Kapitel {p_dict['chapter_nr']}",
+                                             'shortName': p_dict['chapter_name'],
+                                             'position': p_dict['chapter_nr'],
+                                             'parent': [lov_shortname]
+                                             }
+                    chapter_property_list.append(chapter_property_dict)
+            else:
+                parents = [lov_shortname]
         
         paragraph_html = []
         paragraph_raw_text = ''
@@ -140,7 +175,7 @@ def paragraph_property_gen(lov_soup, lov_shortname):
                     p_property_dict = {'name': name, 
                                        'position':p_nr,
                                        'html':paragraph_html,
-                                       'raw_text':paragraph_raw_text,
+                                       #'raw_text':paragraph_raw_text,
                                        'parent': parents
                                        }
                     paragraph_property_list.append(p_property_dict)
@@ -149,12 +184,12 @@ def paragraph_property_gen(lov_soup, lov_shortname):
             p_property_dict = {'name': name, 
                                'position':p_nr,
                                'html':paragraph_html,
-                               'raw_text':paragraph_raw_text,
+                               #'raw_text':paragraph_raw_text,
                                'parent': parents
                                }
             
             paragraph_property_list.append(p_property_dict)
-    return (paragraph_property_list, chapter_property_list)
+    return (paragraph_property_list, chapter_property_list, section_property_list)
 
 #%% Extract stk content -> generate paragraph_stk_raw_list
 def _stk_sorting_raw(paragraph_property_list):
@@ -193,7 +228,7 @@ def stk_property_gen(paragraph_property_list):
             stk_property_dict = {'name': name, 
                                  'position':stk_nr,
                                  'html':stk_html,
-                                 'raw_text':stk_raw_text,
+                                 #'raw_text':stk_raw_text,
                                  'parent': parents
                                  }
             stk_property_list.append(stk_property_dict)
@@ -209,6 +244,9 @@ def _sentence_property_gen(tag, parents, tag_position):
         span.extract()
     
     tag_raw_text = " " + local_tag.text
+    
+    #just to fix a typo in §193 stk. 5 in lov om investeringsforeninger m.v.
+    tag_raw_text = tag_raw_text.replace("ophæves den 22. juli. 2014.", "ophæves den 22. juli 2014.")
     
     # "."-exceptions
     exceptions_list = abbreviations
@@ -230,7 +268,7 @@ def _sentence_property_gen(tag, parents, tag_position):
     pkt_instances = pkt_instances + re.findall("[0-9]\. og [0-9]", tag_raw_text)
     pkt_instances = pkt_instances + re.findall("[0-9]\., [0-9]", tag_raw_text)
     
-    number_instances = re.findall("[0-9]\. ", tag_raw_text)
+    number_instances = re.findall("[0-9]\.", tag_raw_text)
     pkt_instances = pkt_instances + number_instances
     
     pkt_replacements = []
@@ -312,12 +350,12 @@ def _sentence_property_gen(tag, parents, tag_position):
 
 def _litra_nr_property_gen(tag, parents, tag_position):
     tag_html = str(tag)
-    tag_raw_text = tag.text
+    #tag_raw_text = tag.text
     name = tag.find('span', attrs={'class': 'Liste1Nr'}).text
     tag_property_dict = {'name': name, 
                          'position':tag_position+1,
                          'html':tag_html,
-                         'raw_text':tag_raw_text,
+                         #'raw_text':tag_raw_text,
                          'parent': parents
                          }
     return tag_property_dict

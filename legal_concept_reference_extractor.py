@@ -423,6 +423,8 @@ def _get_single_ref_string(text): # Used both in _get_single_ref_dict() and _get
     searching = True
     i = 2
     while searching == True:
+        if len(text)-1 < i:
+            break
         if len(text)<3:
             break
         #paragraph
@@ -755,6 +757,12 @@ def _get_individual_ref_dict(p, text, paragraph_property_list):
         elif continuous_ref_dict == None:
             noncontinuous_ref_dict = _get_noncontinuous_ref_dict(p, text)
             individual_ref_dict = noncontinuous_ref_dict
+    else:
+        individual_ref_dict = {
+            "ref_string": '',
+            "p_ref_list": [],
+            "ref_type": None
+            } 
             
     return individual_ref_dict
   

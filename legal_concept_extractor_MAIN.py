@@ -19,6 +19,7 @@ import copy
 
 from legal_concept_resources import abbreviations
 from legal_concept_resources import lov_label_list
+from legal_concept_resources import section_label_list
 from legal_concept_resources import chapter_label_list
 from legal_concept_resources import paragraph_label_list
 from legal_concept_resources import stk_label_list
@@ -97,7 +98,7 @@ def _get_law_document_dict_raw(url):
         lov_soup, lov_property_dict, lov_name, lov_shortname = LBK_extractor.law_property_gen(lov_json)
         
         #Paragraphs
-        (paragraph_property_list, chapter_property_list) = LBK_extractor.paragraph_property_gen(lov_soup, lov_shortname)
+        (paragraph_property_list, chapter_property_list, section_property_list) = LBK_extractor.paragraph_property_gen(lov_soup, lov_shortname)
         
         # Stk   
         stk_property_list = LBK_extractor.stk_property_gen(paragraph_property_list)
@@ -155,6 +156,7 @@ def _get_law_document_dict_raw(url):
     #missing external references to document as a whole or chapters.
     
     law_document_dict_raw = {'law': lov_property_dict, 'law_label': lov_label_list,
+                             'section': section_property_list, 'section_label': section_label_list,
                          'chapter': chapter_property_list, 'chapter_label': chapter_label_list,
                          'paragraph': paragraph_property_list, 'paragraph_label': paragraph_label_list,
                          'stk': stk_property_list, 'stk_label': stk_label_list,
@@ -185,13 +187,37 @@ def get_law_document_dict(url, stopwords, word_embeddings):
         'url': url,
         'labels': law_document_dict_raw['law_label'],
         'bow': dict(),
-        'bow_meanvector': np.array([0]*word_embeddings.vector_size, dtype='float32'),
+        #'bow_meanvector': None,#np.array([0]*word_embeddings.vector_size, dtype='float32'),
         'concept_bow': dict(),
-        'concept_vector': np.array([0]*word_embeddings.vector_size, dtype='float32'),
+        'concept_vector': None,#np.array([0]*word_embeddings.vector_size, dtype='float32'),
         'neighbours': []
         }
     
     legal_concepts[law_id] = new_law_property_dict
+    
+    # section
+    section_list = law_document_dict_raw['section']
+    for section in section_list:
+        section_id = _get_legal_concept_id(section['name'],section['parent'])
+        new_section_property_dict = {
+            'id': section_id,
+            'name': section['name'],
+            'shortName': section['shortName'],
+            'position': section['position'],
+            'parent': section['parent'],
+            'labels': law_document_dict_raw['section_label'],
+            'bow': dict(),
+            #'bow_meanvector': None,#np.array([0]*word_embeddings.vector_size, dtype='float32'),
+            'concept_bow': dict(),
+            'concept_vector': None#np.array([0]*word_embeddings.vector_size, dtype='float32')
+            }
+        
+        parent_id = _get_legal_concept_id(section['parent'][0],section['parent'][1:])
+        new_section_property_dict['neighbours'] = [{'neighbour':parent_id, 'type': 'parent'}]
+        legal_concepts[parent_id]['neighbours'].append({'neighbour':section_id, 'type': 'child'})
+        
+        
+        legal_concepts[section_id] = new_section_property_dict
     
     # chapter
     chapter_list = law_document_dict_raw['chapter']
@@ -205,9 +231,9 @@ def get_law_document_dict(url, stopwords, word_embeddings):
             'parent': chapter['parent'],
             'labels': law_document_dict_raw['chapter_label'],
             'bow': dict(),
-            'bow_meanvector': np.array([0]*word_embeddings.vector_size, dtype='float32'),
+            #'bow_meanvector': None,#np.array([0]*word_embeddings.vector_size, dtype='float32'),
             'concept_bow': dict(),
-            'concept_vector': np.array([0]*word_embeddings.vector_size, dtype='float32')
+            'concept_vector':None# np.array([0]*word_embeddings.vector_size, dtype='float32')
             }
         
         parent_id = _get_legal_concept_id(chapter['parent'][0],chapter['parent'][1:])
@@ -228,9 +254,9 @@ def get_law_document_dict(url, stopwords, word_embeddings):
             'parent': paragraph['parent'],
             'labels': law_document_dict_raw['paragraph_label'],
             'bow': dict(),
-            'bow_meanvector': np.array([0]*word_embeddings.vector_size, dtype='float32'),
+            #'bow_meanvector': None,#np.array([0]*word_embeddings.vector_size, dtype='float32'),
             'concept_bow': dict(),
-            'concept_vector': np.array([0]*word_embeddings.vector_size, dtype='float32')
+            'concept_vector': None#np.array([0]*word_embeddings.vector_size, dtype='float32')
             }
         
         parent_id = _get_legal_concept_id(paragraph['parent'][0],paragraph['parent'][1:])
@@ -250,9 +276,9 @@ def get_law_document_dict(url, stopwords, word_embeddings):
             'parent': stk['parent'],
             'labels': law_document_dict_raw['stk_label'],
             'bow': dict(),
-            'bow_meanvector': np.array([0]*word_embeddings.vector_size, dtype='float32'),
+            #'bow_meanvector':None,# np.array([0]*word_embeddings.vector_size, dtype='float32'),
             'concept_bow': dict(),
-            'concept_vector': np.array([0]*word_embeddings.vector_size, dtype='float32')
+            'concept_vector': None#np.array([0]*word_embeddings.vector_size, dtype='float32')
             }
         
         parent_id = _get_legal_concept_id(stk['parent'][0],stk['parent'][1:])
@@ -272,9 +298,9 @@ def get_law_document_dict(url, stopwords, word_embeddings):
             'parent': litra['parent'],
             'labels': law_document_dict_raw['litra_label'],
             'bow': dict(),
-            'bow_meanvector': np.array([0]*word_embeddings.vector_size, dtype='float32'),
+            #'bow_meanvector': None,#np.array([0]*word_embeddings.vector_size, dtype='float32'),
             'concept_bow': dict(),
-            'concept_vector': np.array([0]*word_embeddings.vector_size, dtype='float32')
+            'concept_vector': None#np.array([0]*word_embeddings.vector_size, dtype='float32')
             }
         
         parent_id = _get_legal_concept_id(litra['parent'][0],litra['parent'][1:])
@@ -294,9 +320,9 @@ def get_law_document_dict(url, stopwords, word_embeddings):
             'parent': nr['parent'],
             'labels': law_document_dict_raw['nr_label'],
             'bow': dict(),
-            'bow_meanvector': np.array([0]*word_embeddings.vector_size, dtype='float32'),
+            #'bow_meanvector': None,#np.array([0]*word_embeddings.vector_size, dtype='float32'),
             'concept_bow': dict(),
-            'concept_vector': np.array([0]*word_embeddings.vector_size, dtype='float32')
+            'concept_vector': None#np.array([0]*word_embeddings.vector_size, dtype='float32')
             }
         
         parent_id = _get_legal_concept_id(nr['parent'][0],nr['parent'][1:])
@@ -319,9 +345,9 @@ def get_law_document_dict(url, stopwords, word_embeddings):
             'raw_text': sentence['raw_text'],
             'labels': law_document_dict_raw['sentence_label'],
             'bow': bow,
-            'concept_bow': copy.copy(bow),
-            'bow_meanvector': meanvector,
-            'concept_vector': copy.copy(meanvector)
+            'concept_bow': bow,
+            #'bow_meanvector': "see concept_vector", #meanvector,
+            'concept_vector': meanvector
             }
         
         oov_list = oov_list + sentence_oov_list
@@ -351,3 +377,6 @@ def get_law_document_dict(url, stopwords, word_embeddings):
     
     return law_doc_dict
     
+#%% test
+if __name__ == "__main__":
+    test_raw_dict = _get_law_document_dict_raw(url5)

@@ -11,11 +11,13 @@ import legal_concept_text_cleaning as lc_text_cleaning
 import legal_concept_wmd
 import legal_concept_tf_idf as lc_tf_idf
 
+from legal_concept_resources import hierachical_label_list
+
 #%% Database class
 
 class lc_database:
     def __init__(self, init_url, stopwords, word_embeddings):
-        self.hierachical_label_list = ['list','stk','paragraf','chapter','lov']
+        self.hierachical_label_list = hierachical_label_list
         self.stopwords = stopwords
         self.word_embeddings = word_embeddings
         
@@ -26,9 +28,14 @@ class lc_database:
         self.doc_wordfreq = pd.DataFrame()
         self.doc_wordfreq = self.doc_wordfreq.append(lc_tf_idf.add_to_doc_wordfreq_dataframe(init_lc_doc['legal_concepts']))
         
+        wordfreq = self.doc_wordfreq.loc[:,self.doc_wordfreq.columns != 'parent_doc'].notnull().sum()
+        N = len(self.doc_wordfreq)
+        self.word_idf = np.log(N/(wordfreq+1))
+        
         init_lc_doc = lc_vc.concept_vector_init(init_lc_doc, 
                                                     self.hierachical_label_list, 
-                                                    self.word_embeddings)
+                                                    self.word_embeddings,
+                                                    self.word_idf)
         
         self.external_ref = init_lc_doc['external_ref']
         self.legal_concepts = init_lc_doc['legal_concepts']
@@ -50,9 +57,14 @@ class lc_database:
         
         self.doc_wordfreq = self.doc_wordfreq.append(lc_tf_idf.add_to_doc_wordfreq_dataframe(to_be_added_doc['legal_concepts']))
         
+        wordfreq = self.doc_wordfreq.loc[:,self.doc_wordfreq.columns != 'parent_doc'].notnull().sum()
+        N = len(self.doc_wordfreq)
+        self.word_idf = np.log(N/(wordfreq+1))
+        
         to_be_added_doc = lc_vc.concept_vector_init(to_be_added_doc, 
                                                         self.hierachical_label_list, 
-                                                        self.word_embeddings)
+                                                        self.word_embeddings,
+                                                        self.word_idf)
         
        
         
@@ -102,25 +114,38 @@ class lc_database:
                 self.external_ref.remove(ex_ref)
     
     # Calculate the concept vectors and bows
-    def calculate_concept_vector(self, aver_dist_threshold = 0.1):
+    def calculate_concept_vector(self, aver_dist_threshold = 0.01):
         self.legal_concepts = lc_vc.concept_vector_calculator(self.legal_concepts, 
                                                                 aver_dist_threshold, 
                                                                 self.word_embeddings)
         
-    def calculate_concept_bow(self):
+    def calculate_concept_bow(self, min_tf_threshold = 0.08):
+        
+        wordfreq = self.doc_wordfreq.loc[:,self.doc_wordfreq.columns != 'parent_doc'].notnull().sum()
+        N = len(self.doc_wordfreq)
+        word_idf = np.log(N/(wordfreq+1))
+        
         self.legal_concepts = lc_vc.concept_bow_calculator(self.legal_concepts,
-                                                           self.word_embeddings)
+                                                           min_tf_threshold,
+                                                           self.word_embeddings,
+                                                           word_idf)
 
     # Get search input        
     def get_input_sentence_dicts(self, text):
         self.input_text = text
         input_sentences = lc_text_cleaning.split_text_into_sentences(text)
         
+        wordfreq = self.doc_wordfreq.loc[:,self.doc_wordfreq.columns != 'parent_doc'].notnull().sum()
+        N = len(self.doc_wordfreq)
+
+        
         self.input_sentence_dicts = []
         for sentence in input_sentences:
             sentence_dict = lc_text_cleaning.get_sentence_bow_meanvector(sentence,
                                                                          self.stopwords,
-                                                                         self.word_embeddings)
+                                                                         self.word_embeddings,
+                                                                         wordfreq,
+                                                                         N)
             self.input_sentence_dicts.append(sentence_dict)
         
         self.calculate_input_bow_meanvector()
@@ -129,6 +154,7 @@ class lc_database:
         self.input_bow = dict()
         self.input_bow_meanvector = np.array([0]*self.word_embeddings.vector_size, dtype='float32')
         self.input_oov_list = []
+        
         for sentence_dict in self.input_sentence_dicts:
             self.input_bow_meanvector += sentence_dict['bow_meanvector']
             self.input_oov_list = self.input_oov_list + sentence_dict['oov_list']
@@ -140,66 +166,6 @@ class lc_database:
         self.input_bow_meanvector = self.input_bow_meanvector/len(self.input_sentence_dicts)    
     
     # Find closest concept
-    def find_closest_concept_vector_to_input(self, vector_type = 'cv'):
-        """This function findes the closest concept vector to the input text.
-            The 'vector_type' decides if the search is based on the 'concept vector', 
-            'concept bow meanvector' or 'bow meanvector' of the legal concepts.
-            'cv' -> 'concept vector' (default)
-            'cbmv' -> 'concept bow meanvector'
-            'bmv' -> 'bow meanvector'
-            For every other input the default value is used."""
-        if vector_type == 'bmv':
-            used_vector_type = 'bow_meanvector'
-        elif vector_type == 'cbmv':
-            used_vector_type = 'concept_bow_meanvector'
-        else:
-            used_vector_type = 'concept_vector'
-        
-        self.input_closest_concept_vector = dict()
-        
-        smallest_distance_input_cv = 100000.000
-        sec_smallest_distance_input_cv = 100000.000
-        third_smallest_distance_input_cv = 100000.000
-        
-        closest_cv_key = ''
-        sec_closest_cv_key = ''
-        third_closest_cv_key = ''
-        
-        
-        for key in self.legal_concepts.keys():
-            concept_vector = copy.copy(self.legal_concepts[key][used_vector_type])
-            
-            distance_input_cv = np.linalg.norm(self.input_bow_meanvector-concept_vector)
-            
-            if distance_input_cv < smallest_distance_input_cv:
-                third_smallest_distance_input_cv = float(sec_smallest_distance_input_cv)
-                sec_smallest_distance_input_cv = float(smallest_distance_input_cv)
-                smallest_distance_input_cv = float(distance_input_cv)
-                
-                third_closest_cv_key = str(sec_closest_cv_key)
-                sec_closest_cv_key = str(closest_cv_key)
-                closest_cv_key = str(key)
-                
-                
-                
-            elif distance_input_cv <  sec_smallest_distance_input_cv and distance_input_cv > smallest_distance_input_cv:  
-                third_smallest_distance_input_cv = float(sec_smallest_distance_input_cv)
-                sec_smallest_distance_input_cv = float(distance_input_cv)
-                
-                third_closest_cv_key = str(sec_closest_cv_key)
-                sec_closest_cv_key = str(key)
-                
-                
-                
-            elif distance_input_cv <  third_smallest_distance_input_cv and distance_input_cv > sec_smallest_distance_input_cv:
-                third_smallest_distance_input_cv = float(distance_input_cv)
-                
-                third_closest_cv_key = str(key)
-                
-        self.input_closest_concept_vector = {'closest': (closest_cv_key, smallest_distance_input_cv),
-                                             '2. closest': (sec_closest_cv_key, sec_smallest_distance_input_cv),
-                                             '3. closest': (third_closest_cv_key, third_smallest_distance_input_cv)
-                                             }
                                                  
     def calculate_min_dist(self):
         
@@ -214,16 +180,6 @@ class lc_database:
                 '2. closest': ('',1000.00),
                 '3. closest': ('',1000.00)
                 },
-            'bow_meanvector':{
-                '1. closest': ('',1000.00),
-                '2. closest': ('',1000.00),
-                '3. closest': ('',1000.00)
-                },
-            'wmd_bow':{
-                '1. closest': ('',{'wmd':1000.00}),
-                '2. closest': ('',{'wmd':1000.00}),
-                '3. closest': ('',{'wmd':1000.00})
-                },
             'wmd_concept_bow':{
                 '1. closest': ('',{'wmd':1000.00}),
                 '2. closest': ('',{'wmd':1000.00}),
@@ -231,8 +187,8 @@ class lc_database:
                 }
             }
         
-        vector_types = ['concept_vector', 'concept_bow_meanvector', 'bow_meanvector']
-        bow_types = [('wmd_bow','bow'), ('wmd_concept_bow','concept_bow')]
+        vector_types = ['concept_vector', 'concept_bow_meanvector']
+        bow_types = [('wmd_concept_bow','concept_bow'),('wmd_bow', 'bow')]
         
         concept_count = self.concept_count()
         progress = (1/concept_count)*100
@@ -243,54 +199,60 @@ class lc_database:
             print(f"\rDistance calculation: [{('#' * (int(progress)//5)) + ('_' * (20-(int(progress)//5)))}] ({int(progress//1)}%)", end='\r')
             
             for vector_type in vector_types:
-                concept_vector = copy.copy(self.legal_concepts[key][vector_type])
-                
-                distance_input_cv = np.linalg.norm(self.input_bow_meanvector-concept_vector)
-                
-                if distance_input_cv < self.input_min_dist[vector_type]['1. closest'][1]:
-                    self.input_min_dist[vector_type]['3. closest'] = self.input_min_dist[vector_type]['2. closest']
-                    self.input_min_dist[vector_type]['2. closest'] = self.input_min_dist[vector_type]['1. closest']
-                    self.input_min_dist[vector_type]['1. closest'] = (
-                        str(key),
-                        float(distance_input_cv)
-                        )
+                try:
+                    concept_vector = copy.copy(self.legal_concepts[key][vector_type])
                     
-                elif distance_input_cv <  self.input_min_dist[vector_type]['2. closest'][1]:  
-                    self.input_min_dist[vector_type]['3. closest'] = self.input_min_dist[vector_type]['2. closest']
-                    self.input_min_dist[vector_type]['2. closest'] = (
-                        str(key),
-                        float(distance_input_cv)
-                        )
+                    distance_input_cv = np.linalg.norm(self.input_bow_meanvector-concept_vector)
                     
-                elif distance_input_cv <  self.input_min_dist[vector_type]['3. closest'][1]:
-                    self.input_min_dist[vector_type]['3. closest'] =  (
-                        str(key),
-                        float(distance_input_cv)
-                        )
-                    
+                    if distance_input_cv < self.input_min_dist[vector_type]['1. closest'][1]:
+                        self.input_min_dist[vector_type]['3. closest'] = self.input_min_dist[vector_type]['2. closest']
+                        self.input_min_dist[vector_type]['2. closest'] = self.input_min_dist[vector_type]['1. closest']
+                        self.input_min_dist[vector_type]['1. closest'] = (
+                            str(key),
+                            float(distance_input_cv)
+                            )
+                        
+                    elif distance_input_cv <  self.input_min_dist[vector_type]['2. closest'][1]:  
+                        self.input_min_dist[vector_type]['3. closest'] = self.input_min_dist[vector_type]['2. closest']
+                        self.input_min_dist[vector_type]['2. closest'] = (
+                            str(key),
+                            float(distance_input_cv)
+                            )
+                        
+                    elif distance_input_cv <  self.input_min_dist[vector_type]['3. closest'][1]:
+                        self.input_min_dist[vector_type]['3. closest'] =  (
+                            str(key),
+                            float(distance_input_cv)
+                            )
+                except:
+                    pass
+                            
             for bow_type in bow_types:
-                wmd_dict = legal_concept_wmd.wmd(self.input_bow, 
-                                                 self.legal_concepts[key][bow_type[1]], 
-                                                 self.word_embeddings)
-                
-                if wmd_dict['wmd'] < self.input_min_dist[bow_type[0]]['1. closest'][1]['wmd']:
-                    self.input_min_dist[bow_type[0]]['3. closest'] = self.input_min_dist[bow_type[0]]['2. closest']
-                    self.input_min_dist[bow_type[0]]['2. closest'] = self.input_min_dist[bow_type[0]]['1. closest']
-                    self.input_min_dist[bow_type[0]]['1. closest'] = (
-                        str(key),
-                        wmd_dict
-                        )
+                try:
+                    wmd_dict = legal_concept_wmd.wmd(self.input_bow, 
+                                                     self.legal_concepts[key][bow_type[1]], 
+                                                     self.word_embeddings)
                     
-                elif wmd_dict['wmd'] <  self.input_min_dist[bow_type[0]]['2. closest'][1]['wmd']:  
-                    self.input_min_dist[bow_type[0]]['3. closest'] = self.input_min_dist[bow_type[0]]['2. closest']
-                    self.input_min_dist[bow_type[0]]['2. closest'] = (
-                        str(key),
-                        wmd_dict
-                        )
-                    
-                elif wmd_dict['wmd'] <  self.input_min_dist[bow_type[0]]['3. closest'][1]['wmd']:
-                    self.input_min_dist[bow_type[0]]['3. closest'] =  (
-                        str(key),
-                        wmd_dict
-                        )
-                
+                    if wmd_dict['wmd'] < self.input_min_dist[bow_type[0]]['1. closest'][1]['wmd']:
+                        self.input_min_dist[bow_type[0]]['3. closest'] = self.input_min_dist[bow_type[0]]['2. closest']
+                        self.input_min_dist[bow_type[0]]['2. closest'] = self.input_min_dist[bow_type[0]]['1. closest']
+                        self.input_min_dist[bow_type[0]]['1. closest'] = (
+                            str(key),
+                            wmd_dict
+                            )
+                        
+                    elif wmd_dict['wmd'] <  self.input_min_dist[bow_type[0]]['2. closest'][1]['wmd']:  
+                        self.input_min_dist[bow_type[0]]['3. closest'] = self.input_min_dist[bow_type[0]]['2. closest']
+                        self.input_min_dist[bow_type[0]]['2. closest'] = (
+                            str(key),
+                            wmd_dict
+                            )
+                        
+                    elif wmd_dict['wmd'] <  self.input_min_dist[bow_type[0]]['3. closest'][1]['wmd']:
+                        self.input_min_dist[bow_type[0]]['3. closest'] =  (
+                            str(key),
+                            wmd_dict
+                            )
+                except:
+                    pass
+            

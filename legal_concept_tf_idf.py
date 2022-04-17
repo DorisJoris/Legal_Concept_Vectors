@@ -47,7 +47,7 @@ df =df.append(df2)
 
 df.notnull().sum()
 
-df.loc[:,df.columns != 'parent_doc'].notnull().sum()
+wordfreq = df.loc[:,df.columns != 'parent_doc'].notnull().sum()
 
 
 #%% doc wordfreq dataframe pandas
@@ -62,7 +62,7 @@ def add_to_doc_wordfreq_dataframe(legal_concept_dict):
         progress += (1/concept_count)*100
         print(f"\rDoc-Wordfreq-Dataframe creation: [{('#' * (int(progress)//5)) + ('_' * (20-(int(progress)//5)))}] ({int(progress//1)}%)", end='\r')
         if legal_concept_dict[key]['labels'][1] == 'sentence':
-            local_lc_bow = copy.copy(legal_concept_dict[key]['bow'])
+            local_lc_bow = copy.copy(legal_concept_dict[key]['concept_bow'])
             try:
                 local_lc_bow.update({'parent_doc':legal_concept_dict[key]['parent'][-1]})
             except:

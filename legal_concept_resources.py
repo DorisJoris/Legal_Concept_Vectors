@@ -5,7 +5,11 @@ Created on Sat Feb 12 12:13:55 2022
 @author: bejob
 """
 #%% Label lists
+hierachical_label_list = ['list','stk','paragraf','chapter','section', 'lov']
+
 lov_label_list = ['legal_concept','lov']
+
+section_label_list = ['legal_concept','section']
 
 chapter_label_list = ['legal_concept','chapter']
 
@@ -57,6 +61,7 @@ abbreviations = [[' alm.', ' alm%%'], [' Alm.', ' Alm%%'],
                  [' m.fl.', ' m%%fl%%'], [' M.fl.', ' M%%fl%%'],
                  [' m.m.', ' m%%m%%'], [' M.m.', ' M%%m%%'],
                  [' m.v.', ' m%%v%%'], [' M.v.', ' M%%v%%'],
+                 [' m.v.,', ' m%%v%%,'],
                  [' mia.', ' mia%%'], [' Mia.', ' Mia%%'],
                  [' mio.', ' mio%%'], [' Mio.', ' Mio%%'],
                  [' nkr.', ' nkr%%'], [' Nkr.', ' Nkr%%'],

@@ -90,37 +90,44 @@ def split_text_into_sentences(text):
         sentence_list.append(sentence_text)
     return sentence_list
 
-def get_sentence_bow_meanvector(sentence_raw_text, stopwords, word_embeddings):
+def get_sentence_bow_meanvector(sentence_raw_text, stopwords, word_embeddings, wordfreq, N):
     raw_text = sentence_raw_text.lower()
     for exception in abbreviations:
         raw_text = raw_text.replace(exception[0], '')
     
     raw_text_clean = re.sub('[^a-zæøå ]+', '', raw_text)
     
-    words = []
-    for word in raw_text_clean.split():
-        if word not in stopwords:
-            words.append(word)
+    word_idf = np.log(N/(wordfreq+1))
     
     bow = dict()
-    oov_list = list()
-    word_vector_sum = np.array([0]*word_embeddings.vector_size, dtype='float32')
-    word_count = 0
-    for word in words:
-        try:
-            word_vector = word_embeddings[word]
-            word_vector_sum += word_vector
-            word_count += 1
+    
+    for word in raw_text_clean.split():
+        if word not in stopwords:
             if word in bow.keys():
                 bow[word] += 1
             else:
                 bow[word] = 1
+    
+    oov_list = list()
+    word_vector_sum = np.array([0]*word_embeddings.vector_size, dtype='float32')
+    word_count = 0
+    weights = 0
+    for word in bow.keys():
+        try:
+            weight = (bow[word]/sum(bow.values()))*word_idf[word]
+        except:
+            weight = (bow[word]/sum(bow.values()))*np.log((N+1)/(1+1))
+        try:
+            word_vector = word_embeddings[word]
+            word_vector_sum += word_vector * weight
+            word_count += 1
+            weights += weight
         except:
             word_vector = None
             oov_list.append(word)
         
     if word_count > 0:
-        word_vector_mean = word_vector_sum/word_count
+        word_vector_mean = word_vector_sum/weights
     else:
         word_vector_mean = None
     
