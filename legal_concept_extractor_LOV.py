@@ -27,8 +27,10 @@ from bs4 import BeautifulSoup as bs
 def law_property_gen(lov_json):
     lov_html = lov_json['documentHtml']
     full_soup = bs(lov_html, 'html.parser')
+    
     lov_soup = full_soup.find(id='INDHOLD')
     
+        
     try:
         lov_name = lov_json["popularTitle"]
     except:

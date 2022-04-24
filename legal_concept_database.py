@@ -4,6 +4,7 @@ import random
 import numpy as np
 import pandas as pd
 import copy
+from sklearn.decomposition import PCA
 
 import legal_concept_extractor_MAIN as lc_em
 import legal_concept_vector_calculator as lc_vc
@@ -40,6 +41,7 @@ class lc_database:
         self.external_ref = init_lc_doc['external_ref']
         self.legal_concepts = init_lc_doc['legal_concepts']
         self.oov_list = init_lc_doc['oov_list']
+        #self.input_list = []
     
     # Helper functions
     def concept_count(self):
@@ -114,7 +116,7 @@ class lc_database:
                 self.external_ref.remove(ex_ref)
     
     # Calculate the concept vectors and bows
-    def calculate_concept_vector(self, aver_dist_threshold = 0.01):
+    def calculate_concept_vector(self, aver_dist_threshold = 30):
         self.legal_concepts = lc_vc.concept_vector_calculator(self.legal_concepts, 
                                                                 aver_dist_threshold, 
                                                                 self.word_embeddings)
@@ -129,130 +131,64 @@ class lc_database:
                                                            min_tf_threshold,
                                                            self.word_embeddings,
                                                            word_idf)
-
-    # Get search input        
-    def get_input_sentence_dicts(self, text):
-        self.input_text = text
-        input_sentences = lc_text_cleaning.split_text_into_sentences(text)
-        
-        wordfreq = self.doc_wordfreq.loc[:,self.doc_wordfreq.columns != 'parent_doc'].notnull().sum()
-        N = len(self.doc_wordfreq)
-
-        
-        self.input_sentence_dicts = []
-        for sentence in input_sentences:
-            sentence_dict = lc_text_cleaning.get_sentence_bow_meanvector(sentence,
-                                                                         self.stopwords,
-                                                                         self.word_embeddings,
-                                                                         wordfreq,
-                                                                         N)
-            self.input_sentence_dicts.append(sentence_dict)
-        
-        self.calculate_input_bow_meanvector()
-            
-    def calculate_input_bow_meanvector(self):
-        self.input_bow = dict()
-        self.input_bow_meanvector = np.array([0]*self.word_embeddings.vector_size, dtype='float32')
-        self.input_oov_list = []
-        
-        for sentence_dict in self.input_sentence_dicts:
-            self.input_bow_meanvector += sentence_dict['bow_meanvector']
-            self.input_oov_list = self.input_oov_list + sentence_dict['oov_list']
-            for word in sentence_dict['bow']:
-                if word in self.input_bow.keys():
-                    self.input_bow[word] += sentence_dict['bow'][word]
-                else:
-                    self.input_bow[word] = sentence_dict['bow'][word]
-        self.input_bow_meanvector = self.input_bow_meanvector/len(self.input_sentence_dicts)    
     
-    # Find closest concept
-                                                 
-    def calculate_min_dist(self):
-        
-        self.input_min_dist = {
-            'concept_vector':{
-                '1. closest': ('',1000.00),
-                '2. closest': ('',1000.00),
-                '3. closest': ('',1000.00)
-                },
-            'concept_bow_meanvector':{
-                '1. closest': ('',1000.00),
-                '2. closest': ('',1000.00),
-                '3. closest': ('',1000.00)
-                },
-            'wmd_concept_bow':{
-                '1. closest': ('',{'wmd':1000.00}),
-                '2. closest': ('',{'wmd':1000.00}),
-                '3. closest': ('',{'wmd':1000.00})
-                }
-            }
-        
-        vector_types = ['concept_vector', 'concept_bow_meanvector']
-        bow_types = [('wmd_concept_bow','concept_bow'),('wmd_bow', 'bow')]
-        
-        concept_count = self.concept_count()
-        progress = (1/concept_count)*100
-        
+    # Calculate concept dfs
+    def get_vector_dfs(self):
+        columns = []
+        for i in range(self.word_embeddings.vector_size):
+            columns.append(f"Dim_{i+1}")
+            
+        self.concept_bow_meanvector_df = pd.DataFrame()
+        self.concept_vector_df = pd.DataFrame()
         
         for key in self.legal_concepts.keys():
-            progress += (1/concept_count)*100
-            print(f"\rDistance calculation: [{('#' * (int(progress)//5)) + ('_' * (20-(int(progress)//5)))}] ({int(progress//1)}%)", end='\r')
+            if type(self.legal_concepts[key]['parent']) != list:
+                level = 0
+                parents = self.legal_concepts[key]['parent']
+            else:
+                level = len(self.legal_concepts[key]['parent'])
+                parents = self.legal_concepts[key]['parent']
             
-            for vector_type in vector_types:
-                try:
-                    concept_vector = copy.copy(self.legal_concepts[key][vector_type])
-                    
-                    distance_input_cv = np.linalg.norm(self.input_bow_meanvector-concept_vector)
-                    
-                    if distance_input_cv < self.input_min_dist[vector_type]['1. closest'][1]:
-                        self.input_min_dist[vector_type]['3. closest'] = self.input_min_dist[vector_type]['2. closest']
-                        self.input_min_dist[vector_type]['2. closest'] = self.input_min_dist[vector_type]['1. closest']
-                        self.input_min_dist[vector_type]['1. closest'] = (
-                            str(key),
-                            float(distance_input_cv)
-                            )
-                        
-                    elif distance_input_cv <  self.input_min_dist[vector_type]['2. closest'][1]:  
-                        self.input_min_dist[vector_type]['3. closest'] = self.input_min_dist[vector_type]['2. closest']
-                        self.input_min_dist[vector_type]['2. closest'] = (
-                            str(key),
-                            float(distance_input_cv)
-                            )
-                        
-                    elif distance_input_cv <  self.input_min_dist[vector_type]['3. closest'][1]:
-                        self.input_min_dist[vector_type]['3. closest'] =  (
-                            str(key),
-                            float(distance_input_cv)
-                            )
-                except:
-                    pass
-                            
-            for bow_type in bow_types:
-                try:
-                    wmd_dict = legal_concept_wmd.wmd(self.input_bow, 
-                                                     self.legal_concepts[key][bow_type[1]], 
-                                                     self.word_embeddings)
-                    
-                    if wmd_dict['wmd'] < self.input_min_dist[bow_type[0]]['1. closest'][1]['wmd']:
-                        self.input_min_dist[bow_type[0]]['3. closest'] = self.input_min_dist[bow_type[0]]['2. closest']
-                        self.input_min_dist[bow_type[0]]['2. closest'] = self.input_min_dist[bow_type[0]]['1. closest']
-                        self.input_min_dist[bow_type[0]]['1. closest'] = (
-                            str(key),
-                            wmd_dict
-                            )
-                        
-                    elif wmd_dict['wmd'] <  self.input_min_dist[bow_type[0]]['2. closest'][1]['wmd']:  
-                        self.input_min_dist[bow_type[0]]['3. closest'] = self.input_min_dist[bow_type[0]]['2. closest']
-                        self.input_min_dist[bow_type[0]]['2. closest'] = (
-                            str(key),
-                            wmd_dict
-                            )
-                        
-                    elif wmd_dict['wmd'] <  self.input_min_dist[bow_type[0]]['3. closest'][1]['wmd']:
-                        self.input_min_dist[bow_type[0]]['3. closest'] =  (
-                            str(key),
-                            wmd_dict
-                            )
-                except:
-                    pass
+            key_cbowm_df = pd.DataFrame([self.legal_concepts[key]['concept_bow_meanvector']], 
+                                  index=[self.legal_concepts[key]['id']],
+                                  columns=columns)
+            key_cbowm_df['level'] = level
+            key_cbowm_df['parent'] = '_'.join([str(item) for item in parents])
             
+            self.concept_bow_meanvector_df = self.concept_bow_meanvector_df.append(key_cbowm_df)
+            
+            key_cv_df = pd.DataFrame([self.legal_concepts[key]['concept_vector']], 
+                                  index=[self.legal_concepts[key]['id']],
+                                  columns=columns)
+            key_cv_df['level'] = level
+            key_cv_df['parent'] = '_'.join([str(item) for item in parents])
+            
+            self.concept_vector_df = self.concept_vector_df.append(key_cv_df)
+            
+        self.get_PCAs()
+        
+        cbowm_pca_oupt = self.pca_concept_bow_meanvector.transform(self.concept_bow_meanvector_df.iloc[:,0:100])
+        self.concept_bow_meanvector_df = pd.concat([self.concept_bow_meanvector_df,
+                                                    pd.DataFrame(cbowm_pca_oupt,columns=("X","Y"),
+                                                                 index=self.concept_bow_meanvector_df.index)], 
+                                                   axis=1)
+        
+        cv_pca_oupt = self.pca_concept_vector.transform(self.concept_vector_df.iloc[:,0:100])
+        self.concept_vector_df = pd.concat([self.concept_vector_df,
+                                                    pd.DataFrame(cv_pca_oupt,columns=("X","Y"),
+                                                                 index=self.concept_vector_df.index)], 
+                                                   axis=1)
+    
+    def get_PCAs(self):
+        self.pca_concept_bow_meanvector = PCA(n_components = 2)
+        self.pca_concept_bow_meanvector.fit(self.concept_bow_meanvector_df.iloc[:,0:100])
+        
+        self.pca_concept_vector = PCA(n_components = 2)
+        self.pca_concept_vector.fit(self.concept_vector_df.iloc[:,0:100])
+    
+    # Get search input        
+    
+        
+    
+    
+ 

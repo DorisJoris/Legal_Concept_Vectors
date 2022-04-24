@@ -131,8 +131,8 @@ def get_sentence_bow_meanvector(sentence_raw_text, stopwords, word_embeddings, w
     else:
         word_vector_mean = None
     
-    sentence_dict = {'bow':bow,
-                     'bow_meanvector':word_vector_mean,
+    sentence_dict = {'input_bow':bow,
+                     'input_bow_meanvector':word_vector_mean,
                      'oov_list':oov_list,
                      'text':sentence_raw_text}
     return sentence_dict

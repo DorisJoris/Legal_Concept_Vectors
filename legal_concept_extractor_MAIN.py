@@ -110,19 +110,34 @@ def _get_law_document_dict_raw(url):
         
     
     if doc_type == 'LOV':
-        #Lov
-        lov_soup, lov_property_dict, lov_name, lov_shortname = LOV_extractor.law_property_gen(lov_json)
-        
-        #Paragraphs
-        (paragraph_property_list, chapter_property_list) = LOV_extractor.paragraph_property_gen(lov_soup, lov_shortname)
-        
-        # Stk   
-        stk_property_list = LOV_extractor.stk_property_gen(paragraph_property_list)
-        
-        #Litra, Nr and sentences
-        (litra_property_list,
-        nr_property_list,
-        sentence_property_list) = LOV_extractor.sentence_litra_nr_property_gen(stk_property_list)
+        try:
+            #Lov
+            lov_soup, lov_property_dict, lov_name, lov_shortname = LOV_extractor.law_property_gen(lov_json)
+            
+            #Paragraphs
+            (paragraph_property_list, chapter_property_list) = LOV_extractor.paragraph_property_gen(lov_soup, lov_shortname)
+            
+            # Stk   
+            stk_property_list = LOV_extractor.stk_property_gen(paragraph_property_list)
+            
+            #Litra, Nr and sentences
+            (litra_property_list,
+            nr_property_list,
+            sentence_property_list) = LOV_extractor.sentence_litra_nr_property_gen(stk_property_list)
+        except:
+            #Lov
+            lov_soup, lov_property_dict, lov_name, lov_shortname = LBK_extractor.law_property_gen(lov_json)
+            
+            #Paragraphs
+            (paragraph_property_list, chapter_property_list, section_property_list) = LBK_extractor.paragraph_property_gen(lov_soup, lov_shortname)
+            
+            # Stk   
+            stk_property_list = LBK_extractor.stk_property_gen(paragraph_property_list)
+            
+            #Litra, Nr and sentences
+            (litra_property_list,
+            nr_property_list,
+            sentence_property_list) = LBK_extractor.sentence_litra_nr_property_gen(stk_property_list)
         
     
 
@@ -182,6 +197,7 @@ def get_law_document_dict(url, stopwords, word_embeddings):
         'shortName': law['shortName'],
         'title': law['title'],
         'date_of_publication': law['date_of_publication'],
+        'parent': 'document',
         'ressort': law['ressort'],
         'retsinfo_id': law['id'],
         'url': url,
@@ -345,7 +361,7 @@ def get_law_document_dict(url, stopwords, word_embeddings):
             'raw_text': sentence['raw_text'],
             'labels': law_document_dict_raw['sentence_label'],
             'bow': bow,
-            'concept_bow': bow,
+            'concept_bow': copy.copy(bow),
             #'bow_meanvector': "see concept_vector", #meanvector,
             'concept_vector': meanvector
             }
@@ -379,4 +395,62 @@ def get_law_document_dict(url, stopwords, word_embeddings):
     
 #%% test
 if __name__ == "__main__":
-    test_raw_dict = _get_law_document_dict_raw(url5)
+
+    url = 'https://www.retsinformation.dk/api/document/eli/lta/2022/406'
+    
+    with urllib.request.urlopen(url) as page:
+        data = json.loads(page.read().decode())
+    
+    lov_json = data[0]
+    
+    lov_soup, lov_property_dict, lov_name, lov_shortname = LBK_extractor.law_property_gen(lov_json)
+    
+    #Paragraphs
+    (paragraph_property_list, chapter_property_list, section_property_list) = LBK_extractor.paragraph_property_gen(lov_soup, lov_shortname)
+    
+    # Stk   
+    stk_property_list = LBK_extractor.stk_property_gen(paragraph_property_list)
+    
+    #Litra, Nr and sentences
+    (litra_property_list,
+    nr_property_list,
+    sentence_property_list) = LBK_extractor.sentence_litra_nr_property_gen(stk_property_list)
+    
+    stk_internal_ref_query_list, stk_internal_ref_dict_list = ref_extractor.stk_internal_references(sentence_property_list)
+        
+    paragraph_internal_references_query_list, paragraph_internal_ref_dict_list = ref_extractor.paragraph_internal_references(sentence_property_list)
+
+    relative_stk_ref_sets_list = ref_extractor.get_relative_ref_sets(sentence_property_list) #only in funktionærloven
+    relative_stk_ref_dict_list = ref_extractor.get_relative_stk_ref_dict_list(relative_stk_ref_sets_list)
+        
+    list_internal_ref_query_list, list_internal_ref_dict_list = ref_extractor.list_internal_ref(sentence_property_list) #only in funktionærloven
+
+    (law_internal_paragraph_specific_ref_query_list,
+     law_internal_paragraph_specific_ref_dict_list,
+     law_external_paragraph_specific_ref_list) = ref_extractor.paragraph_specific_references(sentence_property_list, paragraph_property_list)
+
+    (internal_ref_to_whole_law_list, 
+     law_external_paragraph_specific_ref_list) = ref_extractor.ref_to_whole_law(sentence_property_list, law_external_paragraph_specific_ref_list)
+    internal_ref_to_whole_law_dict_list = ref_extractor.get_internal_ref_to_whole_law_dict_list(internal_ref_to_whole_law_list, lov_name, lov_shortname)
+    
+    # internal ref dict list
+    internal_ref_dict_list = concatenate_lists([stk_internal_ref_dict_list,
+                                                paragraph_internal_ref_dict_list,
+                                                relative_stk_ref_dict_list,
+                                                law_internal_paragraph_specific_ref_dict_list,
+                                                internal_ref_to_whole_law_dict_list
+                                                ])
+                            
+    #missing external references to document as a whole or chapters.
+    
+    law_document_dict_raw = {'law': lov_property_dict, 'law_label': lov_label_list,
+                             'section': section_property_list, 'section_label': section_label_list,
+                         'chapter': chapter_property_list, 'chapter_label': chapter_label_list,
+                         'paragraph': paragraph_property_list, 'paragraph_label': paragraph_label_list,
+                         'stk': stk_property_list, 'stk_label': stk_label_list,
+                         'litra': litra_property_list, 'litra_label': litra_label_list,
+                         'nr': nr_property_list, 'nr_label': nr_label_list,
+                         'sentence': sentence_property_list, 'sentence_label': sentence_label_list,
+                         'internal_ref': internal_ref_dict_list,
+                         'external_ref': law_external_paragraph_specific_ref_list
+                         }

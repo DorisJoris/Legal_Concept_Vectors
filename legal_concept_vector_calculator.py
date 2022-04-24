@@ -64,8 +64,12 @@ def concept_vector_init(document_dict, hierachical_label_list, word_embeddings, 
                     tf_idf_weighted_word_vec = word_embeddings[word] * weight
                     
                     tf_idf_weighted_sum_word_vec = tf_idf_weighted_sum_word_vec + tf_idf_weighted_word_vec
-
-                document_dict['legal_concepts'][legal_concept_key]['concept_vector'] = tf_idf_weighted_sum_word_vec/sum_of_weights
+                
+                if len(document_dict['legal_concepts'][legal_concept_key]['concept_bow'].keys()) != 0:
+                    document_dict['legal_concepts'][legal_concept_key]['concept_vector'] = tf_idf_weighted_sum_word_vec/sum_of_weights
+                else: 
+                    document_dict['legal_concepts'][legal_concept_key]['concept_vector'] = np.array([0]*word_embeddings.vector_size, dtype='float32')
+                
                 
     return document_dict
 
@@ -74,47 +78,102 @@ def concept_vector_init(document_dict, hierachical_label_list, word_embeddings, 
 #%% Concept_vector calculator (iterative calculation the mean of all neighbours for every concept)    
     
 def concept_vector_calculator(legal_concepts, aver_dist_threshold, word_embeddings):
-    aver_dist_prior_ultimo_concept_vector = 1000
-    n_concept_vector = len(legal_concepts.keys())
+    candidat_keys = list(legal_concepts.keys())
+    candidat_change_count = {}
+    iteration_count = 0
+    #print(aver_dist_threshold)
+    #aver_dist_prior_ultimo_concept_vector = 1000
+    #n_concept_vector = len(legal_concepts.keys())
     iteration_count = 0
     neighbours_not_found = []
-    while aver_dist_prior_ultimo_concept_vector > aver_dist_threshold:
-        iteration_count += 1
-        sum_dist_prior_ultimo_concept_vector = 0
-        legal_concept_keys = list(legal_concepts.keys())
-        random.shuffle(legal_concept_keys)
-        for legal_concept_key in legal_concept_keys:
+    neighbours_without_concept_vector = []
+    while len(candidat_keys) > 0:
+        #print(len(candidat_keys))
+        for legal_concept_key in candidat_keys:
             prior_concept_vector = legal_concepts[legal_concept_key]['concept_vector']
+            if type(prior_concept_vector) != np.ndarray:
+                prior_concept_vector = np.array([0]*word_embeddings.vector_size, dtype='float32')
             
             sum_of_neighbours_vec = np.array([0]*word_embeddings.vector_size, dtype='float32')
             n_of_neighbours = 0
             
             for neighbour in legal_concepts[legal_concept_key]['neighbours']:
                 neighbour_id = neighbour['neighbour']
-                try:
+                if neighbour_id in legal_concepts.keys():
                     neighbour_vec = legal_concepts[neighbour_id]['concept_vector']
                     if type(neighbour_vec) == np.ndarray:
                         sum_of_neighbours_vec = sum_of_neighbours_vec + neighbour_vec
                         n_of_neighbours += 1
-                except:
+                    else:
+                        if neighbour_id not in neighbours_without_concept_vector:
+                            neighbours_without_concept_vector.append(neighbour_id)
+                            
+                else:
                     if neighbour_id not in neighbours_not_found:
                         neighbours_not_found.append(neighbour_id)
-                
+                        legal_concepts[legal_concept_key]['neighbours'].remove(neighbour)
+                        
             if n_of_neighbours > 0:        
                 ultimo_concept_vector = sum_of_neighbours_vec/n_of_neighbours
                 
-                sum_dist_prior_ultimo_concept_vector += np.linalg.norm(prior_concept_vector-ultimo_concept_vector)
+                dist_prior_ultimo_concept_vector = np.linalg.norm(prior_concept_vector-ultimo_concept_vector)
                 
                 legal_concepts[legal_concept_key]['concept_vector'] = ultimo_concept_vector
+                
+                if legal_concept_key not in candidat_change_count.keys():
+                    candidat_change_count[legal_concept_key] = {'cv_unchanged':0}
+                else:
+                    if dist_prior_ultimo_concept_vector < aver_dist_threshold:
+                        candidat_change_count[legal_concept_key]['cv_unchanged'] += 1
             
-        aver_dist_prior_ultimo_concept_vector = sum_dist_prior_ultimo_concept_vector/n_concept_vector
+            if candidat_change_count[legal_concept_key]['cv_unchanged'] > 1:
+                candidat_keys.remove(legal_concept_key)
+                
+            iteration_count += 1    
+                
+    # while aver_dist_prior_ultimo_concept_vector > aver_dist_threshold:
+    #     iteration_count += 1
+    #     sum_dist_prior_ultimo_concept_vector = 0
+    #     legal_concept_keys = list(legal_concepts.keys())
+    #     random.shuffle(legal_concept_keys)
+    #     for legal_concept_key in legal_concept_keys:
+    #         prior_concept_vector = legal_concepts[legal_concept_key]['concept_vector']
+            
+    #         sum_of_neighbours_vec = np.array([0]*word_embeddings.vector_size, dtype='float32')
+    #         n_of_neighbours = 0
+            
+    #         for neighbour in legal_concepts[legal_concept_key]['neighbours']:
+    #             neighbour_id = neighbour['neighbour']
+    #             try:
+    #                 neighbour_vec = legal_concepts[neighbour_id]['concept_vector']
+    #                 if type(neighbour_vec) == np.ndarray:
+    #                     sum_of_neighbours_vec = sum_of_neighbours_vec + neighbour_vec
+    #                     n_of_neighbours += 1
+    #             except:
+    #                 if neighbour_id not in neighbours_not_found:
+    #                     neighbours_not_found.append(neighbour_id)
+                
+    #         if n_of_neighbours > 0:        
+    #             ultimo_concept_vector = sum_of_neighbours_vec/n_of_neighbours
+                
+    #             sum_dist_prior_ultimo_concept_vector += np.linalg.norm(prior_concept_vector-ultimo_concept_vector)
+                
+    #             legal_concepts[legal_concept_key]['concept_vector'] = ultimo_concept_vector
+            
+    #     aver_dist_prior_ultimo_concept_vector = sum_dist_prior_ultimo_concept_vector/n_concept_vector
        
     print(f"{iteration_count} numbers of iteration where needed to calculate the concept vectors.") 
     print(f"The applied average distance threshold was {aver_dist_threshold}.")
     if len(neighbours_not_found) > 0:
         print("---")
-        print("The following neighbour ID's could not be found:")
+        print(f"The following {len(neighbours_not_found)} neighbour ID's could not be found:")
         for not_found_id in neighbours_not_found:
+            print(not_found_id)
+            
+    if len(neighbours_without_concept_vector) > 0:
+        print("---")
+        print(f"The following {len(neighbours_without_concept_vector)} neighbour ID's had no concept vector:")
+        for not_found_id in neighbours_without_concept_vector:
             print(not_found_id)
     return legal_concepts
 

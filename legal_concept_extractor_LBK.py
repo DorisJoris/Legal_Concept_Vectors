@@ -8,8 +8,8 @@ Created on Sun Apr 10 11:32:06 2022
 #%% Import
 import copy
 import re
-
-
+import urllib.request
+import json
 from legal_concept_resources import abbreviations
 
 from bs4 import BeautifulSoup as bs
@@ -72,6 +72,8 @@ def _paragraph_sorting_raw(lov_soup):
     ch_name = ''
     for p in pees:
         if p['class'][0] == 'IkraftTekst':
+            break
+        if p['class'][0] == 'Givet':
             break
         if p['class'][0] == 'Afsnit':
             section_nr += 1
@@ -397,3 +399,24 @@ def sentence_litra_nr_property_gen(stk_property_list):
     return (litra_property_list,
             nr_property_list,
             sentence_property_list)
+
+
+#%% test App
+if __name__ == "__main__":
+    url = 'https://www.retsinformation.dk/api/document/eli/lta/2022/406'
+    
+    with urllib.request.urlopen(url) as page:
+        data = json.loads(page.read().decode())
+    
+    lov_json = data[0]
+    
+    lov_soup, lov_property_dict, lov_name, lov_shortname = law_property_gen(lov_json)
+
+    (paragraph_property_list, chapter_property_list, section_property_list) = paragraph_property_gen(lov_soup, lov_shortname)
+    
+    stk_property_list = stk_property_gen(paragraph_property_list)
+    
+    (litra_property_list,
+    nr_property_list,
+    sentence_property_list) = sentence_litra_nr_property_gen(stk_property_list)
+    
