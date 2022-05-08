@@ -47,14 +47,18 @@ if __name__ == "__main__":
          'https://www.retsinformation.dk/api/document/eli/lta/2022/336', #lov om investeringsforeninger m.v.
          'https://www.retsinformation.dk/api/document/eli/lta/2016/193', #Bekendtgørelse af lov om aftaler og andre retshandler på formuerettens område
          'https://www.retsinformation.dk/api/document/eli/lta/2013/1457', #Lov om forbrugeraftaler
-        'https://www.retsinformation.dk/api/document/eli/lta/2021/1284'  #Bekendtgørelse af lov om indkomstskat for personer m.v.
+        'https://www.retsinformation.dk/api/document/eli/lta/2021/1284',#Bekendtgørelse af lov om indkomstskat for personer m.v.
+        'https://www.retsinformation.dk/api/document/eli/lta/2021/25' #Bekendtgørelse af lov om godkendte revisorer og revisionsvirksomheder (revisorloven)1)
         ]
     
     for url in url_list:
         test_database.add_retsinfo_doc(url)
-    
+  
+#test_database.add_retsinfo_doc('https://www.retsinformation.dk/api/document/eli/lta/2021/25')
 #%%
 if __name__ == "__main__":
+    
+    test_database.concept_bow_vector_init()
     
     #print(len(test_database.external_ref))
     #print(test_database.concept_count())
@@ -65,11 +69,12 @@ if __name__ == "__main__":
     
     test_database.get_vector_dfs()
     
-    cbowm_df = test_database.concept_bow_meanvector_df
-    cv_df = test_database.concept_vector_df
+    # cbowm_df = test_database.concept_bow_meanvector_df
+    # cv_df = test_database.concept_vector_df
+    # bm_df = test_database.bow_meanvector_df
     
     example_lc = test_database.random_lc()
-
+    example_lc = test_database.legal_concepts['LBK nr 336 af 11/03/2022']
     
     with open("databases/test_database.p", "wb") as pickle_file:
         pickle.dump(test_database, pickle_file) 

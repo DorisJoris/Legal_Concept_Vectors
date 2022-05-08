@@ -167,6 +167,8 @@ def _get_stk_ref_numbers(text):
             for j in range(1,6):
                 if text[i+j].isnumeric():
                     end_nr = end_nr + text[i+j]
+                elif text[i+j] == ' ' and text[i+j+1].isnumeric():
+                    continue
                 elif text[i+j:i+j+4] == " og ":
                     number = ""
                     for t in text[i+j+4:i+j+8]:
@@ -189,6 +191,10 @@ def _get_stk_ref_numbers(text):
                     break
                 else:
                     break
+                
+            #if end_nr.isnumeric() == False:
+            #    end_nr = start_nr
+                
             for k in range(int(start_nr),int(end_nr)+1):
                 stk_ref_numbers.append(f"{k}")
             break

@@ -105,9 +105,9 @@ class callback(CallbackAny2Vec):
         print('Loss after epoch {}: {}'.format(self.epoch, loss))
         self.epoch += 1
 
-
+#%%
 if __name__ == "__main__":        
-    #%% Data cleaning
+    # Data cleaning
     # I have added retsinformationdk + skat + retspraksis + tv2r + wiki + adl + danavis 
     #               + dannet + depbank + ep + ft + gutenberg + hest + opensub + relig + wikibooks
     

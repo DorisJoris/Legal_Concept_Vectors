@@ -12,6 +12,8 @@ import pandas as pd
 from dash import Dash, dcc, html, Input, Output
 import plotly.express as px
 
+from sklearn.manifold import TSNE
+from sklearn.manifold import MDS
 from sklearn.neighbors import NearestNeighbors
 
 from datetime import datetime
@@ -52,20 +54,8 @@ def calculate_min_dist(input_dict, database, nbrs_cbowm, nbrs_cv):
     cv_distances, cv_neighbours = nbrs_cv.kneighbors(search_vector.reshape(1,-1))
     
     input_dict['input_min_dist'] = {
-        'concept_vector':{
-            '1. closest': (database.concept_vector_df.iloc[cv_neighbours[0][0]].name,cv_distances[0][0]),
-            '2. closest': (database.concept_vector_df.iloc[cv_neighbours[0][1]].name,cv_distances[0][1]),
-            '3. closest': (database.concept_vector_df.iloc[cv_neighbours[0][2]].name,cv_distances[0][2]),
-            '4. closest': (database.concept_vector_df.iloc[cv_neighbours[0][3]].name,cv_distances[0][3]),
-            '5. closest': (database.concept_vector_df.iloc[cv_neighbours[0][4]].name,cv_distances[0][4])
-            },
-        'concept_bow_meanvector':{
-            '1. closest': (database.concept_bow_meanvector_df.iloc[cbowm_neighbours[0][0]].name,cbowm_distances[0][0]),
-            '2. closest': (database.concept_bow_meanvector_df.iloc[cbowm_neighbours[0][1]].name,cbowm_distances[0][1]),
-            '3. closest': (database.concept_bow_meanvector_df.iloc[cbowm_neighbours[0][2]].name,cbowm_distances[0][2]),
-            '4. closest': (database.concept_bow_meanvector_df.iloc[cbowm_neighbours[0][3]].name,cbowm_distances[0][3]),
-            '5. closest': (database.concept_bow_meanvector_df.iloc[cbowm_neighbours[0][4]].name,cbowm_distances[0][4])
-            },
+        'concept_vector':dict(),
+        'concept_bow_meanvector':dict(),
         'wmd_concept_bow':{
             '1. closest': ('',{'wmd':1000.00}),
             '2. closest': ('',{'wmd':1000.00}),
@@ -77,6 +67,14 @@ def calculate_min_dist(input_dict, database, nbrs_cbowm, nbrs_cv):
             '3. closest': ('',{'wmd':1000.00})
             }
         }
+    
+    for i in range(10):
+        key = f"{i+1}. closest"
+        input_dict['input_min_dist']['concept_vector'][key] = (database.concept_vector_df.iloc[cv_neighbours[0][i]].name,
+                                                               cv_distances[0][i])
+        input_dict['input_min_dist']['concept_bow_meanvector'][key] = (database.concept_vector_df.iloc[cv_neighbours[0][i]].name,
+                                                               cv_distances[0][i])
+    
     
     for bow_type in bow_types:
         changed = False
@@ -154,13 +152,77 @@ def cbowm_visual_df(input_dict, database):
     
     return output_df
 
+#%% Get t-SNE
+
+def get_visu_df(input_dict, database):
+    input_label = "Input"
+    input_id = input_dict['id']
+    input_text = input_dict['full_text']
+    input_dist = 0.0
+    cbowm_list = [[input_label, input_id, input_text, input_dist]]
+    
+    input_bow_mean = input_dict['input_bow_meanvector']
+    cbowm_vector_list = [list(input_bow_mean)]
+
+    for neighbour in input_dict['input_min_dist']['concept_bow_meanvector']:
+        neighbour_label = f"{neighbour} to input"
+        neighbour_id = input_dict['input_min_dist']['concept_bow_meanvector'][neighbour][0]
+        neighbour_text = database.legal_concepts[neighbour_id]['raw_text']
+        neighbour_dist = input_dict['input_min_dist']['concept_bow_meanvector'][neighbour][1]
+        neighbour_list = [neighbour_label, neighbour_id, neighbour_text, neighbour_dist]    
+        cbowm_list.append(neighbour_list)
+        
+    
+    
+        neighbour_vector = list(database.legal_concepts[neighbour_id]['concept_bow_meanvector'])
+        cbowm_vector_list.append(neighbour_vector)
+    
+    if len(input_dict['sentence_dicts']) > 1:
+        sentence_count = 0
+        for sentence in input_dict['sentence_dicts']:
+            sentence_bow_mean = sentence['input_bow_meanvector']
+            cbowm_vector_list.append(sentence_bow_mean)
+            
+            sentence_count += 1
+            sentence_label = f"sentence {sentence_count}"
+            sentence_text = sentence['text']
+            sentence_dist = np.linalg.norm(input_bow_mean-sentence_bow_mean)
+            cbowm_list.append([sentence_label, '', sentence_text, sentence_dist])
+            
+            for neighbour in sentence['input_min_dist']['concept_bow_meanvector']:
+                neighbour_label = f"{neighbour} to sentence {sentence_count}"
+                neighbour_id = sentence['input_min_dist']['concept_bow_meanvector'][neighbour][0]
+                neighbour_text = database.legal_concepts[neighbour_id]['raw_text']
+                neighbour_dist = sentence['input_min_dist']['concept_bow_meanvector'][neighbour][1]
+                neighbour_list = [neighbour_label, neighbour_id, neighbour_text, neighbour_dist]    
+                cbowm_list.append(neighbour_list)
+            
+                neighbour_vector = list(database.legal_concepts[neighbour_id]['concept_bow_meanvector'])
+                cbowm_vector_list.append(neighbour_vector)
+    
+    cbowm_vectors_array = np.array(cbowm_vector_list)
+    
+    #cbowm_vectors_embedded = TSNE(n_components=2).fit_transform(cbowm_vectors_array)
+    cbowm_vectors_embedded = MDS(n_components=2).fit_transform(cbowm_vectors_array)
+    
+    cbowm_df = pd.DataFrame(np.array(cbowm_list), columns=['label', 'id', 'text', 'distance'])
+    cbowm_df = pd.concat([cbowm_df, pd.DataFrame(cbowm_vectors_embedded, columns=['X','Y'])], axis=1)
+    #cv_list = 
+    
+    
+    
+    #wmd_bow_list =
+    #wmd_concept_bow_list = 
+    
+    return cbowm_df, cbowm_vectors_embedded
+
 #%% Get input sentence dict
 def get_input_sentence_dicts(text, text_id, database):
     start=datetime.now()
     dimmension = database.word_embeddings.vector_size
     
-    nbrs_cbowm = NearestNeighbors(n_neighbors=5, algorithm='ball_tree').fit(database.concept_bow_meanvector_df.iloc[:,0:dimmension]) 
-    nbrs_cv = NearestNeighbors(n_neighbors=5, algorithm='ball_tree').fit(database.concept_vector_df.iloc[:,0:dimmension])
+    nbrs_cbowm = NearestNeighbors(n_neighbors=10, algorithm='ball_tree').fit(database.concept_bow_meanvector_df.iloc[:,0:dimmension]) 
+    nbrs_cv = NearestNeighbors(n_neighbors=10, algorithm='ball_tree').fit(database.concept_vector_df.iloc[:,0:dimmension])
     
     input_dict = dict()
     input_dict['id'] = text_id
@@ -184,21 +246,24 @@ def get_input_sentence_dicts(text, text_id, database):
     
     input_dict = calculate_input_bow_meanvector(input_dict, database)
     
-    input_dict['cbowm_2d'] = database.pca_concept_bow_meanvector.transform(input_dict['input_bow_meanvector'].reshape(1,-1))
-    input_dict['cv_2d'] = database.pca_concept_vector.transform(input_dict['input_bow_meanvector'].reshape(1,-1))
+    # input_dict['cbowm_2d'] = database.pca_concept_bow_meanvector.transform(input_dict['input_bow_meanvector'].reshape(1,-1))
+    # input_dict['cv_2d'] = database.pca_concept_vector.transform(input_dict['input_bow_meanvector'].reshape(1,-1))
+    # input_dict['bm_2d'] = database.pca_bow_meanvector.transform(input_dict['input_bow_meanvector'].reshape(1,-1))
     
     input_dict = calculate_min_dist(input_dict, database, nbrs_cbowm, nbrs_cv)
+    
+    cbowm_output_df = ''#cbowm_visual_df(input_dict, database)
+    
     print(datetime.now()-start)
-    
-    
-    cbowm_output_df = cbowm_visual_df(input_dict, database)
-    return cbowm_output_df
+    return cbowm_output_df, input_dict
 
 #%% Open database
 
 #open data
 with open("databases/test_database.p", "rb") as pickle_file:
     test_database = pickle.load(pickle_file) 
+    
+example_lc = test_database.random_lc()
 
 #%% Input text
 test_input_list = ["En funktionær er en lønmodtager, som primært er ansat "
@@ -224,7 +289,12 @@ test_input_list = ["En funktionær er en lønmodtager, som primært er ansat "
                    "Den nye malersvend blev fyret efter en uge.",
                    "Den nye salgschef blev fyret efter en uge."
                    ]   
- 
+
+#%%
+cbowm_output_df, input_dict = get_input_sentence_dicts(test_input_list[3], 1, test_database)
+
+cbowm_df, cbowm_vectors_embedded = get_visu_df(input_dict, test_database)
+
 #%% plotly
 
 
@@ -235,7 +305,7 @@ app.layout = html.Div([
     dcc.Dropdown(
         id="dropdown",
         options=test_input_list,
-        value=test_input_list[0],
+        value=test_input_list[1],
         multi=False
     ),
     dcc.Graph(id="graph"),
@@ -247,9 +317,9 @@ app.layout = html.Div([
     Input("dropdown", "value"))
 def update_bar_chart(text):
     text_id = 1
-    cbowm_output_df = get_input_sentence_dicts(text, text_id, test_database)
+    cbowm_output_df = cbowm_df
     
-    fig = px.scatter(cbowm_output_df, x="X", y="Y", color = "color", size = "size", hover_name="name", log_x=True)
+    fig = px.scatter(cbowm_output_df, x="distance", y="label", hover_name="id", hover_data=['text'])
     return fig
 
 
@@ -295,3 +365,4 @@ if __name__ == "__main__":
 
 
    
+

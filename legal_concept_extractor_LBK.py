@@ -41,8 +41,8 @@ def law_property_gen(lov_json):
                         "date_of_publication":lov_json["metadata"][0]["displayValue"],
                         "ressort": lov_json["ressort"],
                         "id": lov_json["id"],
-                        'html':lov_html}#,
-                        #'raw_text':lov_soup.text}
+                        'html':lov_html,
+                        'raw_text':lov_soup.text}
     
     lov_name = lov_property_dict['name']
     lov_shortname = lov_property_dict['shortName']
@@ -177,7 +177,7 @@ def paragraph_property_gen(lov_soup, lov_shortname):
                     p_property_dict = {'name': name, 
                                        'position':p_nr,
                                        'html':paragraph_html,
-                                       #'raw_text':paragraph_raw_text,
+                                       'raw_text':paragraph_raw_text,
                                        'parent': parents
                                        }
                     paragraph_property_list.append(p_property_dict)
@@ -186,7 +186,7 @@ def paragraph_property_gen(lov_soup, lov_shortname):
             p_property_dict = {'name': name, 
                                'position':p_nr,
                                'html':paragraph_html,
-                               #'raw_text':paragraph_raw_text,
+                               'raw_text':paragraph_raw_text,
                                'parent': parents
                                }
             
@@ -230,7 +230,7 @@ def stk_property_gen(paragraph_property_list):
             stk_property_dict = {'name': name, 
                                  'position':stk_nr,
                                  'html':stk_html,
-                                 #'raw_text':stk_raw_text,
+                                 'raw_text':stk_raw_text,
                                  'parent': parents
                                  }
             stk_property_list.append(stk_property_dict)
@@ -352,12 +352,12 @@ def _sentence_property_gen(tag, parents, tag_position):
 
 def _litra_nr_property_gen(tag, parents, tag_position):
     tag_html = str(tag)
-    #tag_raw_text = tag.text
+    tag_raw_text = tag.text
     name = tag.find('span', attrs={'class': 'Liste1Nr'}).text
     tag_property_dict = {'name': name, 
                          'position':tag_position+1,
                          'html':tag_html,
-                         #'raw_text':tag_raw_text,
+                         'raw_text':tag_raw_text,
                          'parent': parents
                          }
     return tag_property_dict

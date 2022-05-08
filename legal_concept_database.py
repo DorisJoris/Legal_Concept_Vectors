@@ -33,10 +33,10 @@ class lc_database:
         N = len(self.doc_wordfreq)
         self.word_idf = np.log(N/(wordfreq+1))
         
-        init_lc_doc = lc_vc.concept_vector_init(init_lc_doc, 
-                                                    self.hierachical_label_list, 
-                                                    self.word_embeddings,
-                                                    self.word_idf)
+        # init_lc_doc = lc_vc.concept_vector_init(init_lc_doc, 
+        #                                             self.hierachical_label_list, 
+        #                                             self.word_embeddings,
+        #                                             self.word_idf)
         
         self.external_ref = init_lc_doc['external_ref']
         self.legal_concepts = init_lc_doc['legal_concepts']
@@ -63,10 +63,10 @@ class lc_database:
         N = len(self.doc_wordfreq)
         self.word_idf = np.log(N/(wordfreq+1))
         
-        to_be_added_doc = lc_vc.concept_vector_init(to_be_added_doc, 
-                                                        self.hierachical_label_list, 
-                                                        self.word_embeddings,
-                                                        self.word_idf)
+        # to_be_added_doc = lc_vc.concept_vector_init(to_be_added_doc, 
+        #                                                 self.hierachical_label_list, 
+        #                                                 self.word_embeddings,
+        #                                                 self.word_idf)
         
        
         
@@ -115,6 +115,12 @@ class lc_database:
                 
                 self.external_ref.remove(ex_ref)
     
+    def concept_bow_vector_init(self):
+        self.legal_concepts = lc_vc.concept_vector_init(self.legal_concepts, 
+                                                            self.hierachical_label_list, 
+                                                            self.word_embeddings,
+                                                            self.word_idf)
+    
     # Calculate the concept vectors and bows
     def calculate_concept_vector(self, aver_dist_threshold = 30):
         self.legal_concepts = lc_vc.concept_vector_calculator(self.legal_concepts, 
@@ -140,6 +146,7 @@ class lc_database:
             
         self.concept_bow_meanvector_df = pd.DataFrame()
         self.concept_vector_df = pd.DataFrame()
+        self.bow_meanvector_df = pd.DataFrame()
         
         for key in self.legal_concepts.keys():
             if type(self.legal_concepts[key]['parent']) != list:
@@ -165,26 +172,60 @@ class lc_database:
             
             self.concept_vector_df = self.concept_vector_df.append(key_cv_df)
             
-        self.get_PCAs()
+            
+            word_vector_sum = np.array([0]*self.word_embeddings.vector_size, dtype='float32')
+            word_count = 0
+            for word in self.legal_concepts[key]['bow']:
+                try:
+                    word_vector = self.word_embeddings[word]
+                    word_vector_sum += word_vector*self.legal_concepts[key]['bow'][word]
+                    word_count += self.legal_concepts[key]['bow'][word]
+                except:
+                    word_vector = None
+                
+            if word_count > 0:
+                word_vector_mean = word_vector_sum/word_count
+                key_bm_df = pd.DataFrame([word_vector_mean], 
+                                      index=[self.legal_concepts[key]['id']],
+                                      columns=columns)
+                key_bm_df['level'] = level
+                key_bm_df['parent'] = '_'.join([str(item) for item in parents])
+                
+                self.bow_meanvector_df = self.bow_meanvector_df.append(key_bm_df)
+            else:
+                word_vector_mean = None
+            
+            
+            
+    #     self.get_PCAs()
         
-        cbowm_pca_oupt = self.pca_concept_bow_meanvector.transform(self.concept_bow_meanvector_df.iloc[:,0:100])
-        self.concept_bow_meanvector_df = pd.concat([self.concept_bow_meanvector_df,
-                                                    pd.DataFrame(cbowm_pca_oupt,columns=("X","Y"),
-                                                                 index=self.concept_bow_meanvector_df.index)], 
-                                                   axis=1)
+    #     cbowm_pca_oupt = self.pca_concept_bow_meanvector.transform(self.concept_bow_meanvector_df.iloc[:,0:self.word_embeddings.vector_size])
+    #     self.concept_bow_meanvector_df = pd.concat([self.concept_bow_meanvector_df,
+    #                                                 pd.DataFrame(cbowm_pca_oupt,columns=("X","Y"),
+    #                                                              index=self.concept_bow_meanvector_df.index)], 
+    #                                                axis=1)
         
-        cv_pca_oupt = self.pca_concept_vector.transform(self.concept_vector_df.iloc[:,0:100])
-        self.concept_vector_df = pd.concat([self.concept_vector_df,
-                                                    pd.DataFrame(cv_pca_oupt,columns=("X","Y"),
-                                                                 index=self.concept_vector_df.index)], 
-                                                   axis=1)
+    #     cv_pca_oupt = self.pca_concept_vector.transform(self.concept_vector_df.iloc[:,0:self.word_embeddings.vector_size])
+    #     self.concept_vector_df = pd.concat([self.concept_vector_df,
+    #                                                 pd.DataFrame(cv_pca_oupt,columns=("X","Y"),
+    #                                                              index=self.concept_vector_df.index)], 
+    #                                                axis=1)
+        
+    #     bm_pca_oupt = self.pca_bow_meanvector.transform(self.bow_meanvector_df.iloc[:,0:self.word_embeddings.vector_size])
+    #     self.bow_meanvector_df = pd.concat([self.bow_meanvector_df,
+    #                                                 pd.DataFrame(bm_pca_oupt,columns=("X","Y"),
+    #                                                              index=self.bow_meanvector_df.index)], 
+    #                                                axis=1)
     
-    def get_PCAs(self):
-        self.pca_concept_bow_meanvector = PCA(n_components = 2)
-        self.pca_concept_bow_meanvector.fit(self.concept_bow_meanvector_df.iloc[:,0:100])
+    # def get_PCAs(self):
+    #     self.pca_concept_bow_meanvector = PCA(n_components = 2)
+    #     self.pca_concept_bow_meanvector.fit(self.concept_bow_meanvector_df.iloc[:,0:self.word_embeddings.vector_size])
         
-        self.pca_concept_vector = PCA(n_components = 2)
-        self.pca_concept_vector.fit(self.concept_vector_df.iloc[:,0:100])
+    #     self.pca_concept_vector = PCA(n_components = 2)
+    #     self.pca_concept_vector.fit(self.concept_vector_df.iloc[:,0:self.word_embeddings.vector_size])
+        
+    #     self.pca_bow_meanvector = PCA(n_components = 2)
+    #     self.pca_bow_meanvector.fit(self.bow_meanvector_df.iloc[:,0:self.word_embeddings.vector_size])
     
     # Get search input        
     

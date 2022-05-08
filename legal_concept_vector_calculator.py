@@ -13,24 +13,27 @@ import random
 
 
 #%% Concept_vector initializer (only based on the children)
-def concept_vector_init(document_dict, hierachical_label_list, word_embeddings, word_idf): #The heirachical_label_list should be sorted lowest to highest hierachy.
+def concept_vector_init(legal_concepts, hierachical_label_list, word_embeddings, word_idf): #The heirachical_label_list should be sorted lowest to highest hierachy.
     
     for label in hierachical_label_list:
-        for legal_concept_key in document_dict['legal_concepts'].keys():
-            if label in document_dict['legal_concepts'][legal_concept_key]['labels']:
+        for legal_concept_key in legal_concepts.keys():
+            if label in legal_concepts[legal_concept_key]['labels']:
                 #parent_bow = dict()
                 parent_concept_bow = dict()
                 #sum_of_child_vec = np.array([0]*word_embeddings.vector_size, dtype='float32')
                 n_of_child = 0
                 
-                for neighbour in document_dict['legal_concepts'][legal_concept_key]['neighbours']:
+                
+                for neighbour in legal_concepts[legal_concept_key]['neighbours']:
                     if neighbour['type'] == 'child':
                         child_id = neighbour['neighbour']
-                        #child_vec = document_dict['legal_concepts'][child_id]['concept_vector']
-                        child_bow = document_dict['legal_concepts'][child_id]['concept_bow']
+                        #child_vec = legal_concepts[child_id]['concept_vector']
+                        child_bow = legal_concepts[child_id]['concept_bow']
                         #if type(child_vec) == np.ndarray:
                         #    sum_of_child_vec = sum_of_child_vec + child_vec
                         n_of_child += 1
+                        
+                        legal_concepts[legal_concept_key]['raw_text'] += '\n' + legal_concepts[child_id]['raw_text']
                         
                         for word in child_bow.keys():
                             #if word in parent_bow.keys():
@@ -44,19 +47,19 @@ def concept_vector_init(document_dict, hierachical_label_list, word_embeddings, 
                                 parent_concept_bow[word] = child_bow[word]
 
                 if n_of_child > 0:        
-                    #document_dict['legal_concepts'][legal_concept_key]['bow_meanvector'] = sum_of_child_vec/n_of_child
+                    #legal_concepts[legal_concept_key]['bow_meanvector'] = sum_of_child_vec/n_of_child
                     
-                    document_dict['legal_concepts'][legal_concept_key]['bow'] = copy.copy(parent_concept_bow)
-                    document_dict['legal_concepts'][legal_concept_key]['concept_bow'] = parent_concept_bow
+                    legal_concepts[legal_concept_key]['bow'] = copy.copy(parent_concept_bow)
+                    legal_concepts[legal_concept_key]['concept_bow'] = parent_concept_bow
                     
             
             if label == hierachical_label_list[-1]:
                 tf_idf_weighted_sum_word_vec = np.array([0]*word_embeddings.vector_size, dtype='float32')
                 sum_of_weights = 0
                 
-                for word in document_dict['legal_concepts'][legal_concept_key]['concept_bow'].keys():
+                for word in legal_concepts[legal_concept_key]['concept_bow'].keys():
                 
-                    tf = document_dict['legal_concepts'][legal_concept_key]['concept_bow'][word]/sum(document_dict['legal_concepts'][legal_concept_key]['concept_bow'].values())
+                    tf = legal_concepts[legal_concept_key]['concept_bow'][word]/sum(legal_concepts[legal_concept_key]['concept_bow'].values())
                     
                     weight = tf * word_idf[word]
                     sum_of_weights += weight
@@ -65,13 +68,13 @@ def concept_vector_init(document_dict, hierachical_label_list, word_embeddings, 
                     
                     tf_idf_weighted_sum_word_vec = tf_idf_weighted_sum_word_vec + tf_idf_weighted_word_vec
                 
-                if len(document_dict['legal_concepts'][legal_concept_key]['concept_bow'].keys()) != 0:
-                    document_dict['legal_concepts'][legal_concept_key]['concept_vector'] = tf_idf_weighted_sum_word_vec/sum_of_weights
+                if len(legal_concepts[legal_concept_key]['concept_bow'].keys()) != 0:
+                    legal_concepts[legal_concept_key]['concept_vector'] = tf_idf_weighted_sum_word_vec/sum_of_weights
                 else: 
-                    document_dict['legal_concepts'][legal_concept_key]['concept_vector'] = np.array([0]*word_embeddings.vector_size, dtype='float32')
+                    legal_concepts[legal_concept_key]['concept_vector'] = np.array([0]*word_embeddings.vector_size, dtype='float32')
                 
                 
-    return document_dict
+    return legal_concepts
 
   
 
