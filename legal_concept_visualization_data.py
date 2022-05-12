@@ -8,11 +8,11 @@ Created on Fri Apr 22 18:07:25 2022
 import pickle
 import numpy as np
 import pandas as pd
-
+import random
 from dash import Dash, dcc, html, Input, Output
 import plotly.express as px
 
-from sklearn.manifold import TSNE
+
 from sklearn.manifold import MDS
 from sklearn.neighbors import NearestNeighbors
 
@@ -43,7 +43,8 @@ def calculate_input_bow_meanvector(input_dict, database):
 #%% 
 def calculate_min_dist(input_dict, database, nbrs_cbowm, nbrs_cv):
     
-    bow_types = [('wmd_concept_bow','concept_bow'),('wmd_bow', 'bow')]
+    bow_types = [('wmd_concept_bow','concept_bow', 'reverse_wmd_concept_bow', 'weighted_reverse_wmd_concept_bow', 'weighted_wmd_concept_bow'),
+                 ('wmd_bow', 'bow', 'reverse_wmd_bow', 'weighted_reverse_wmd_bow', 'weighted_wmd_bow')]
     
     max_level = database.concept_bow_meanvector_df['level'].max()
     
@@ -52,6 +53,8 @@ def calculate_min_dist(input_dict, database, nbrs_cbowm, nbrs_cv):
     
     cbowm_distances, cbowm_neighbours = nbrs_cbowm.kneighbors(search_vector.reshape(1,-1))
     cv_distances, cv_neighbours = nbrs_cv.kneighbors(search_vector.reshape(1,-1))
+    
+   
     
     input_dict['input_min_dist'] = {
         'concept_vector':dict(),
@@ -62,6 +65,36 @@ def calculate_min_dist(input_dict, database, nbrs_cbowm, nbrs_cv):
             '3. closest': ('',{'wmd':1000.00})
             },
         'wmd_bow':{
+            '1. closest': ('',{'wmd':1000.00}),
+            '2. closest': ('',{'wmd':1000.00}),
+            '3. closest': ('',{'wmd':1000.00})
+            },
+        'reverse_wmd_concept_bow':{
+            '1. closest': ('',{'wmd':1000.00}),
+            '2. closest': ('',{'wmd':1000.00}),
+            '3. closest': ('',{'wmd':1000.00})
+            },
+        'reverse_wmd_bow':{
+            '1. closest': ('',{'wmd':1000.00}),
+            '2. closest': ('',{'wmd':1000.00}),
+            '3. closest': ('',{'wmd':1000.00})
+            },
+        'weighted_reverse_wmd_concept_bow':{
+            '1. closest': ('',{'wmd':1000.00}),
+            '2. closest': ('',{'wmd':1000.00}),
+            '3. closest': ('',{'wmd':1000.00})
+            },
+        'weighted_reverse_wmd_bow':{
+            '1. closest': ('',{'wmd':1000.00}),
+            '2. closest': ('',{'wmd':1000.00}),
+            '3. closest': ('',{'wmd':1000.00})
+            },
+        'weighted_wmd_concept_bow':{
+            '1. closest': ('',{'wmd':1000.00}),
+            '2. closest': ('',{'wmd':1000.00}),
+            '3. closest': ('',{'wmd':1000.00})
+            },
+        'weighted_wmd_bow':{
             '1. closest': ('',{'wmd':1000.00}),
             '2. closest': ('',{'wmd':1000.00}),
             '3. closest': ('',{'wmd':1000.00})
@@ -88,29 +121,102 @@ def calculate_min_dist(input_dict, database, nbrs_cbowm, nbrs_cv):
                 try:
                     wmd_dict = legal_concept_wmd.wmd(input_dict['input_bow'], 
                                                      database.legal_concepts[key][bow_type[1]], 
-                                                     database.word_embeddings)
+                                                     database.word_embeddings,
+                                                     database.word_idf)
                     
-                    if wmd_dict['wmd'] < input_dict['input_min_dist'][bow_type[0]]['1. closest'][1]['wmd']:
+                    if wmd_dict[0]['wmd'] < input_dict['input_min_dist'][bow_type[0]]['1. closest'][1]['wmd']:
                         input_dict['input_min_dist'][bow_type[0]]['3. closest'] = input_dict['input_min_dist'][bow_type[0]]['2. closest']
                         input_dict['input_min_dist'][bow_type[0]]['2. closest'] = input_dict['input_min_dist'][bow_type[0]]['1. closest']
                         input_dict['input_min_dist'][bow_type[0]]['1. closest'] = (
                             str(key),
-                            wmd_dict
+                            wmd_dict[0]
                             )
                         changed = True
                         
-                    elif wmd_dict['wmd'] <  input_dict['input_min_dist'][bow_type[0]]['2. closest'][1]['wmd']:  
+                    elif wmd_dict[0]['wmd'] <  input_dict['input_min_dist'][bow_type[0]]['2. closest'][1]['wmd']:  
                         input_dict['input_min_dist'][bow_type[0]]['3. closest'] = input_dict['input_min_dist'][bow_type[0]]['2. closest']
                         input_dict['input_min_dist'][bow_type[0]]['2. closest'] = (
                             str(key),
-                            wmd_dict
+                            wmd_dict[0]
                             )
                         changed = True
                         
-                    elif wmd_dict['wmd'] <  input_dict['input_min_dist'][bow_type[0]]['3. closest'][1]['wmd']:
+                    elif wmd_dict[0]['wmd'] <  input_dict['input_min_dist'][bow_type[0]]['3. closest'][1]['wmd']:
                         input_dict['input_min_dist'][bow_type[0]]['3. closest'] =  (
                             str(key),
-                            wmd_dict
+                            wmd_dict[0]
+                            )
+                        changed = True
+                    
+                    if wmd_dict[1]['wmd'] < input_dict['input_min_dist'][bow_type[2]]['1. closest'][1]['wmd']:
+                        input_dict['input_min_dist'][bow_type[2]]['3. closest'] = input_dict['input_min_dist'][bow_type[2]]['2. closest']
+                        input_dict['input_min_dist'][bow_type[2]]['2. closest'] = input_dict['input_min_dist'][bow_type[2]]['1. closest']
+                        input_dict['input_min_dist'][bow_type[2]]['1. closest'] = (
+                            str(key),
+                            wmd_dict[1]
+                            )
+                        changed = True
+                        
+                    elif wmd_dict[1]['wmd'] <  input_dict['input_min_dist'][bow_type[2]]['2. closest'][1]['wmd']:  
+                        input_dict['input_min_dist'][bow_type[2]]['3. closest'] = input_dict['input_min_dist'][bow_type[2]]['2. closest']
+                        input_dict['input_min_dist'][bow_type[2]]['2. closest'] = (
+                            str(key),
+                            wmd_dict[1]
+                            )
+                        changed = True
+                        
+                    elif wmd_dict[1]['wmd'] <  input_dict['input_min_dist'][bow_type[2]]['3. closest'][1]['wmd']:
+                        input_dict['input_min_dist'][bow_type[2]]['3. closest'] =  (
+                            str(key),
+                            wmd_dict[1]
+                            )
+                        changed = True
+                        
+                    if wmd_dict[2]['wmd'] < input_dict['input_min_dist'][bow_type[3]]['1. closest'][1]['wmd']:
+                        input_dict['input_min_dist'][bow_type[3]]['3. closest'] = input_dict['input_min_dist'][bow_type[3]]['2. closest']
+                        input_dict['input_min_dist'][bow_type[3]]['2. closest'] = input_dict['input_min_dist'][bow_type[3]]['1. closest']
+                        input_dict['input_min_dist'][bow_type[3]]['1. closest'] = (
+                            str(key),
+                            wmd_dict[2]
+                            )
+                        changed = True
+                        
+                    elif wmd_dict[2]['wmd'] <  input_dict['input_min_dist'][bow_type[3]]['2. closest'][1]['wmd']:  
+                        input_dict['input_min_dist'][bow_type[3]]['3. closest'] = input_dict['input_min_dist'][bow_type[3]]['2. closest']
+                        input_dict['input_min_dist'][bow_type[3]]['2. closest'] = (
+                            str(key),
+                            wmd_dict[2]
+                            )
+                        changed = True
+                        
+                    elif wmd_dict[2]['wmd'] <  input_dict['input_min_dist'][bow_type[3]]['3. closest'][1]['wmd']:
+                        input_dict['input_min_dist'][bow_type[3]]['3. closest'] =  (
+                            str(key),
+                            wmd_dict[2]
+                            )
+                        changed = True 
+                        
+                    if wmd_dict[3]['wmd'] < input_dict['input_min_dist'][bow_type[4]]['1. closest'][1]['wmd']:
+                        input_dict['input_min_dist'][bow_type[4]]['3. closest'] = input_dict['input_min_dist'][bow_type[4]]['2. closest']
+                        input_dict['input_min_dist'][bow_type[4]]['2. closest'] = input_dict['input_min_dist'][bow_type[4]]['1. closest']
+                        input_dict['input_min_dist'][bow_type[4]]['1. closest'] = (
+                            str(key),
+                            wmd_dict[3]
+                            )
+                        changed = True
+                        
+                    elif wmd_dict[3]['wmd'] <  input_dict['input_min_dist'][bow_type[4]]['2. closest'][1]['wmd']:  
+                        input_dict['input_min_dist'][bow_type[4]]['3. closest'] = input_dict['input_min_dist'][bow_type[4]]['2. closest']
+                        input_dict['input_min_dist'][bow_type[4]]['2. closest'] = (
+                            str(key),
+                            wmd_dict[3]
+                            )
+                        changed = True
+                        
+                    elif wmd_dict[3]['wmd'] <  input_dict['input_min_dist'][bow_type[4]]['3. closest'][1]['wmd']:
+                        input_dict['input_min_dist'][bow_type[4]]['3. closest'] =  (
+                            str(key),
+                            wmd_dict[3]
                             )
                         changed = True
                 except:
@@ -121,36 +227,124 @@ def calculate_min_dist(input_dict, database, nbrs_cbowm, nbrs_cv):
             
     return input_dict
 
+#%% 2d distance preserving plotter
+def two_d_distance_preserving_plotter(list_of_points, list_of_distances):
+    """
+    Parameters
+    ----------
+    list_of_points : list of numpy array
+        Should be a list of numpy arrays of equal lenght.
+        The first numpy array will be the focus point and the others will be the neighbours.
+    
+    list_of_distances : list of int
+        Should be a list of distances between the points and the focus point.
+
+    Returns
+    -------
+    None.
+
+    """
+    dim = len(list_of_points[0])
+    
+    new_focus_point = np.array([0,0])
+    new_neighbour_points = list()
+    
+    for i in range(1,len(list_of_points)):
+        x = random.uniform(-1,1)
+        y = random.uniform(-1,1)
+        new_neighbour_point = np.array([x,y])
+        
+
+        goal_dist = (list_of_distances[i]/dim)*2
+            
+        start_dist = np.linalg.norm(new_focus_point-new_neighbour_point)
+        
+        new_x = new_neighbour_point[0]+(((new_focus_point[0]-new_neighbour_point[0])/start_dist)*((start_dist-goal_dist))) 
+        new_y = new_neighbour_point[1]+(((new_focus_point[1]-new_neighbour_point[1])/start_dist)*((start_dist-goal_dist))) 
+        new_neighbour_point = np.array([new_x,new_y])
+        
+        new_neighbour_points.append(new_neighbour_point)
+    
+        
+    
+    
+    for k in range(2):    
+        for i in range(1,len(list_of_points)):
+            focus_neighbour_point = list_of_points[i]
+            new_focus_neighbour_point = new_neighbour_points[i-1]
+            
+            for j in range(1,len(list_of_points)):
+                if i == j:
+                    continue
+                else:
+                    neighbour_point = list_of_points[j]
+                    
+                    goal_dist = (np.linalg.norm(focus_neighbour_point-neighbour_point)/dim)*2
+                    start_dist = np.linalg.norm(new_focus_neighbour_point-new_neighbour_points[j-1])
+                    
+                    if start_dist != 0:
+                        new_x = new_neighbour_points[j-1][0]+(((new_focus_neighbour_point[0]-new_neighbour_points[j-1][0])/start_dist)*((start_dist-goal_dist))) 
+                        new_y = new_neighbour_points[j-1][1]+(((new_focus_neighbour_point[1]-new_neighbour_points[j-1][1])/start_dist)*((start_dist-goal_dist))) 
+                        new_neighbour_points[j-1] = np.array([new_x,new_y])
+                    else:
+                        new_x = new_neighbour_points[j-1][0]+(((new_focus_neighbour_point[0]-new_neighbour_points[j-1][0]))*((start_dist-goal_dist))) 
+                        new_y = new_neighbour_points[j-1][1]+(((new_focus_neighbour_point[1]-new_neighbour_points[j-1][1]))*((start_dist-goal_dist))) 
+                        new_neighbour_points[j-1] = np.array([new_x,new_y])
+                    
+                    
+        for i in range(1,len(list_of_points)):
+            
+            goal_dist = (list_of_distances[i]/dim)*2
+                
+            start_dist = np.linalg.norm(new_focus_point-new_neighbour_points[i-1])
+            
+            new_x = new_neighbour_points[i-1][0]+(((new_focus_point[0]-new_neighbour_points[i-1][0])/start_dist)*((start_dist-goal_dist))) 
+            new_y = new_neighbour_points[i-1][1]+(((new_focus_point[1]-new_neighbour_points[i-1][1])/start_dist)*((start_dist-goal_dist))) 
+            new_neighbour_points[i-1] = np.array([new_x,new_y])
+            
+        
+    
+    return [new_focus_point]+new_neighbour_points
+
 #%% Create visualization dataframe
 
-def cbowm_visual_df(input_dict, database):
-    cbowm_df = database.concept_bow_meanvector_df.loc[:,'X':'Y']
-
-    cbowm_df['name'] = cbowm_df.index
+def get_visual_df(input_dict, database):
+    distance_labels = ['concept_bow_meanvector',
+                       'concept_vector',
+                       'reverse_wmd_bow',
+                       'reverse_wmd_concept_bow',
+                       'weighted_reverse_wmd_bow',
+                       'weighted_reverse_wmd_concept_bow',
+                       'weighted_wmd_bow',
+                       'weighted_wmd_concept_bow',
+                       'wmd_bow',
+                       'wmd_concept_bow']
     
-    cbowm_df['color'] = 'others'  
-    cbowm_df['size'] = 1
-    
-    text_df = pd.DataFrame(input_dict['cbowm_2d'], 
-                          index=['text'],
-                          columns=['X','Y'])
-    
-    text_df['name'] = 'text'
-    text_df['color'] = 'text'
-    text_df['size'] = 3
-    
-    output_df = pd.DataFrame(text_df)
+    visual_dfs = dict()
     
     
-    neighbours = input_dict['input_min_dist']['concept_bow_meanvector']
-    for key in neighbours:
-        index = neighbours[key][0]
-        cbowm_df.loc[index,'color'] = key
-        cbowm_df.loc[index,'size'] = 3
-    
-    output_df = pd.concat([output_df,cbowm_df],axis=0)
-    
-    return output_df
+    for label in distance_labels:
+        lc_names = ['text']
+        list_of_points = [input_dict['input_bow_meanvector']]
+        list_of_distances = [0]
+        for key in input_dict['input_min_dist'][label].keys():
+            tup = input_dict['input_min_dist'][label][key]
+            lc_names.append(tup[0].replace('§ ', '§\xa0'))
+            list_of_points.append(database.legal_concepts[tup[0].replace('§ ', '§\xa0')]['concept_vector'])
+            if type(tup[1]) == dict:
+                list_of_distances.append(tup[1]['wmd'])
+            else:
+                list_of_distances.append(tup[1])
+        
+        xy_df = pd.DataFrame(two_d_distance_preserving_plotter(list_of_points, list_of_distances),
+                             columns = ['X','Y'])
+        label_df = pd.DataFrame()
+        label_df['names'] = lc_names
+        label_df['distances'] = list_of_distances
+        label_df = pd.concat([label_df, xy_df], axis =1)
+        
+        visual_dfs[label] = label_df
+    return visual_dfs
 
 #%% Get t-SNE
 
@@ -223,7 +417,8 @@ def get_input_sentence_dicts(text, text_id, database):
     
     nbrs_cbowm = NearestNeighbors(n_neighbors=10, algorithm='ball_tree').fit(database.concept_bow_meanvector_df.iloc[:,0:dimmension]) 
     nbrs_cv = NearestNeighbors(n_neighbors=10, algorithm='ball_tree').fit(database.concept_vector_df.iloc[:,0:dimmension])
-    
+
+      
     input_dict = dict()
     input_dict['id'] = text_id
     input_dict['full_text'] = text
@@ -252,10 +447,10 @@ def get_input_sentence_dicts(text, text_id, database):
     
     input_dict = calculate_min_dist(input_dict, database, nbrs_cbowm, nbrs_cv)
     
-    cbowm_output_df = ''#cbowm_visual_df(input_dict, database)
+    visual_dfs = get_visual_df(input_dict, database)
     
     print(datetime.now()-start)
-    return cbowm_output_df, input_dict
+    return visual_dfs, input_dict
 
 #%% Open database
 
@@ -291,9 +486,16 @@ test_input_list = ["En funktionær er en lønmodtager, som primært er ansat "
                    ]   
 
 #%%
-cbowm_output_df, input_dict = get_input_sentence_dicts(test_input_list[3], 1, test_database)
+visual_dfs, input_dict = get_input_sentence_dicts(test_input_list[4], 1, test_database)
 
-cbowm_df, cbowm_vectors_embedded = get_visu_df(input_dict, test_database)
+visual_dfs = get_visual_df(input_dict, test_database)
+
+with open("databases/visual_dfs.p", "wb") as pickle_file:
+    pickle.dump(visual_dfs, pickle_file) 
+
+#%%
+with open("databases/visual_dfs.p", "rb") as pickle_file:
+    visual_dfs = pickle.load(pickle_file)
 
 #%% plotly
 
@@ -304,8 +506,17 @@ app.layout = html.Div([
     html.H4('Analysis of Iris data using scatter matrix'),
     dcc.Dropdown(
         id="dropdown",
-        options=test_input_list,
-        value=test_input_list[1],
+        options=['concept_bow_meanvector',
+                           'concept_vector',
+                           'reverse_wmd_bow',
+                           'reverse_wmd_concept_bow',
+                           'weighted_reverse_wmd_bow',
+                           'weighted_reverse_wmd_concept_bow',
+                           'weighted_wmd_bow',
+                           'weighted_wmd_concept_bow',
+                           'wmd_bow',
+                           'wmd_concept_bow'],
+        value='concept_bow_meanvector',
         multi=False
     ),
     dcc.Graph(id="graph"),
@@ -315,54 +526,35 @@ app.layout = html.Div([
 @app.callback(
     Output("graph", "figure"), 
     Input("dropdown", "value"))
-def update_bar_chart(text):
-    text_id = 1
-    cbowm_output_df = cbowm_df
+def update_bar_chart(option):
     
-    fig = px.scatter(cbowm_output_df, x="distance", y="label", hover_name="id", hover_data=['text'])
+    output_df = visual_dfs[option]
+    
+    fig = px.scatter(output_df, x="X", y="Y", hover_name="names", hover_data=['names','distances'])
     return fig
 
 
 app.run_server(debug=False)
 
 
-#%%     
+
+
+
+#%% latex export
 if __name__ == "__main__":
     
-    test_input_list = ["En funktionær er en lønmodtager, som primært er ansat "
-                       +"inden for handel- og kontorområdet. " 
-                       +"Du kan også være funktionær, hvis du udfører "
-                       +"lagerarbejde eller tekniske og kliniske ydelser.", #Funktionærloven -> https://www.frie.dk/find-svar/ansaettelsesvilkaar/funktionaerloven/#:~:text=En%20funktion%C3%A6r%20er%20en%20l%C3%B8nmodtager,arbejdstid%20er%20minimum%208%20timer.
-                       
-                       "Der er en lang række fleksible muligheder - specielt for de forældre, "
-                       +"som gerne vil vende tilbage til arbejdet efter for eksempel seks eller "
-                       +"otte måneders orlov og gemme resten af orloven, til barnet er blevet lidt ældre. "
-                       +"Eller for de forældre, der ønsker at dele orloven eller starte på arbejde på "
-                       +"nedsat tid og dermed forlænge orloven. Fleksibiliteten forudsætter i de "
-                       +"fleste tilfælde, at der er indgået en aftale med arbejdsgiveren.", #Barselsloven -> https://bm.dk/arbejdsomraader/arbejdsvilkaar/barselsorlov/barselsorloven-hvor-meget-orlov-og-hvordan-kan-den-holdes/
-                       
-                       "Når du er tidsbegrænset ansat, gælder der et princip om, at du ikke "
-                       +"må forskelsbehandles i forhold til virksomhedens fastansatte, "
-                       +"medmindre forskelsbehandlingen er begrundet i objektive forhold. "
-                       +"Du har altså de samme rettigheder som de fastansatte.", #Tidsbegrænset ansættelse -> https://sl.dk/faa-svar/ansaettelse/tidsbegraenset-ansaettelse
-                       
-                       "Person A er bogholder.",
-                       "Bogholderen Anja venter sit første barn. Hendes termin nærmer sig med hastige skridt.",
-                       "Jan's kone er gravid. Han glæder sig meget til at være hjemmegående og bruge tid med hans søn.",
-                       "Den nye malersvend blev fyret efter en uge.",
-                       "Den nye salgschef blev fyret efter en uge."
-                       ]
-    
-    
-    test_input_dict = get_input_sentence_dicts(test_input_list[3], 'text_1', test_database)
-    
-    n = 0
-    for text in test_input_list:
-        text_id = f"text_{n}"
-        test_database.get_input_sentence_dicts(text, text_id)
-        n += 1
-    test_min_dist = test_database.input_list
+    wmd_bow_1_td_pairs_df = pd.DataFrame(sorted(input_dict['input_min_dist']['wmd_bow']['1. closest'][1]['travel_distance_pairs'], key=lambda tup: tup[2]),
+                                         columns=['Input word','Legal concept word','Distance'])
 
+    print(wmd_bow_1_td_pairs_df.to_latex(index=False,
+                                         caption=('Travel distance pairs of the 1. closets legal concept BOW for the WMD.'),
+                                         label='wmd_bow_1_td_pais',
+                                         float_format="%.4f"))   
 
-   
+    wmd_bow_df = pd.DataFrame(input_dict['input_min_dist']['wmd_bow'])#,
+                                         #columns=['Legal conept','Word Mover Distance'])
 
+    print(wmd_bow_1_td_pairs_df.to_latex(index=True,
+                                         caption=('Top 3 closest according to WMD on the BOW'),
+                                         label='wmd_bow',
+                                         float_format="%.4f"))   
