@@ -62,6 +62,34 @@ tab_latex = dbc.Card(dbc.CardBody([
     dbc.Card(html.Div(id='latex'))
     ]))
 
+travel_dist_table = dbc.Card(dbc.CardBody([
+    html.H4(id='travel_dist_table_title'),
+    html.Div(id='travel_dist_table')
+    ]))
+
+
+travel_dist_latex = dbc.Card(dbc.CardBody([
+    html.H4(id='travel_dist_latex_title'),
+    html.Div(id='travel_dist_latex')
+    ]))
+
+travel_dist = dbc.Card(dbc.CardBody([
+    dbc.Row([
+        dbc.Col(dbc.Label('Focus on:'),width=2),
+        dbc.Col(dcc.Dropdown(id='travel_dist_dropdown',multi=False))
+        ]),
+    dbc.Row([
+        dbc.Col(dbc.Label('Distance sorted rank:'),width=2),
+        dbc.Col(dcc.Dropdown(options = [5,10,20,30,-30,-20,-10,-5],
+                             value = 10,
+                             id='travel_dist_range',multi=False))
+        ]),
+    dbc.Tabs([
+        dbc.Tab(travel_dist_table, label='Table'),
+        dbc.Tab(travel_dist_latex, label='Latex')
+        ])
+    ]))
+
 app.layout = dbc.Container([
     html.H1('Legal concept experiments'),
     dbc.Row([
@@ -102,7 +130,8 @@ app.layout = dbc.Container([
     dbc.Tabs(
         [dbc.Tab(tab_graph, label='Graph'),
          dbc.Tab(tab_table, label='Table'),
-         dbc.Tab(tab_latex, label='Latex table code')
+         dbc.Tab(tab_latex, label='Latex table code'),
+         dbc.Tab(travel_dist, label='Travel distances')
             ]
         )
     
@@ -345,5 +374,73 @@ def display_latex_code(input_option, dist_option, neighbour_options, doc_options
         latex_list.append(html.Br())
     return latex_list
 
+
+@app.callback(
+    Output('travel_dist_dropdown','options'),
+    Output('travel_dist_dropdown','value'),
+    Input("input_select", "value"),
+    Input("distance_type", "value")
+    )
+def set_travel_dist_dropdown(input_option,dist_option):
+    wmd_options = ['reverse_wmd_bow',
+                       'reverse_wmd_concept_bow',
+                       'weighted_reverse_wmd_bow',
+                       'weighted_reverse_wmd_concept_bow',
+                       'weighted_wmd_bow',
+                       'weighted_wmd_concept_bow',
+                       'wmd_bow',
+                       'wmd_concept_bow']
     
+    if dist_option in wmd_options:
+        output_df = input_visual_dfs[input_option][0][dist_option]
+        options = list(output_df[output_df['Point type'] == 'Legal concept'].loc[:,'Neighbour type'])
+        
+        return options, options[0]
+        
+    else:
+        return ['Not a WMD'], 'Not a WMD'
+    
+@app.callback(
+    Output('travel_dist_table', 'children'),
+    Output('travel_dist_latex', 'children'),
+    Output('travel_dist_table_title', 'children'),
+    Output('travel_dist_latex_title', 'children'),
+    Input("input_select", "value"),
+    Input("distance_type", "value"),
+    Input('travel_dist_dropdown','value'),
+    Input('travel_dist_range', 'value')
+    )
+
+def update_travel_dist_tables(input_option,dist_option,neighbour_type, travel_dist_range):
+    if neighbour_type != 'Not a WMD':
+        name = input_visual_dfs[input_option][1]['input_min_dist'][dist_option][neighbour_type][0]
+        travel_dist_list = input_visual_dfs[input_option][1]['input_min_dist'][dist_option][neighbour_type][1]['travel_distance_pairs']
+        travel_dist_list = sorted(travel_dist_list, key=lambda tup: tup[2])
+        if travel_dist_range > 0:
+            travel_dist_list = travel_dist_list[:travel_dist_range]    
+        else:
+            travel_dist_list = travel_dist_list[travel_dist_range:]
+            
+        travel_dist_df = pd.DataFrame(travel_dist_list, columns = ['Input word', 'Neighbour word','Travel distance'])
+        
+        latex_code = travel_dist_df.to_latex(index=False,
+                                        caption=(f'{input_option} + {dist_option} + {neighbour_type} + {name} travel distance'),
+                                        label='tab:add label',
+                                        float_format="%.7f")
+        
+        latex_list = list()
+        for line in latex_code.split("\n"):
+            latex_list.append(line)
+            latex_list.append(html.Br())
+        
+        
+        table = dash_table.DataTable(travel_dist_df.to_dict('records'), 
+                                      [{"name": i, "id": i} for i in travel_dist_df.columns],
+                                      style_cell={'textAlign': 'left'},
+                                      sort_action="native",
+                                      sort_mode="multi"
+                                          ) 
+        
+        return table, latex_list, name, name 
+        
 app.run_server(debug=False)

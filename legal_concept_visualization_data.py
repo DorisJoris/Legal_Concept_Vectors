@@ -548,6 +548,8 @@ with open("databases/test_database.p", "rb") as pickle_file:
     
 example_lc = test_database.random_lc()
 
+
+
 #%% Input text
 test_input_list = [("En funktionær er en lønmodtager, som primært er ansat "
                    +"inden for handel- og kontorområdet. " 
