@@ -894,3 +894,6 @@ if __name__ == "__main__":
                                     label='tab:add label',
                                     float_format="%.4f")
     test_latex_list = test_latex.split("\n")
+    
+    
+    
