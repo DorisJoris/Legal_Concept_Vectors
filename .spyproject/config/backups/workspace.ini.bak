@@ -4,7 +4,7 @@ save_data_on_exit = True
 save_history = True
 save_non_project_files = False
 project_type = 'empty-project-type'
-recent_files = ['legal_concept_visualization_data.py', 'legal_concept_MAIN.py', 'test.py', 'legal_concept_database.py', 'legal_concept_wmd.py', 'legal_concept_visualization_app.py', 'legal_concept_vector_calculator.py']
+recent_files = ['legal_concept_visualization_data.py', 'test.py', 'legal_concept_visualization_app.py', 'legal_concept_wmd.py', 'legal_concept_text_cleaning.py', 'legal_concept_extractor_MAIN.py', 'bert_test.py', '..\\..\\Python scripts\\danish-bert-embeddings-main\\setup.py', '..\\..\\Python scripts\\danish-bert-embeddings-main\\danish_bert_embeddings\\danish_bert_embeddings.py']
 
 [main]
 version = 0.2.0

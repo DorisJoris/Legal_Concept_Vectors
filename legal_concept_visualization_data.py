@@ -381,6 +381,7 @@ def get_visual_df(input_dict, database):
         list_of_types_two = ['Text', 'Vector']
         list_of_raw_text = [input_dict['full_text'],'']
         list_of_word_pair_ranks = [0,0]
+        list_of_bow_size = [sum(input_dict['input_bow'].values()),0]
         
         list_of_distances = [0,
                              np.linalg.norm(input_dict['input_bow_meanvector']-zero_vector)]
@@ -390,8 +391,18 @@ def get_visual_df(input_dict, database):
             lc_names.append(tup[0].replace('§ ', '§\xa0'))
             if label == 'concept_vector':
                 list_of_points.append(database.legal_concepts[tup[0].replace('§ ', '§\xa0')]['concept_vector'])
+                list_of_bow_size.append(sum(database.legal_concepts[tup[0].replace('§ ', '§\xa0')]['concept_bow'].values()))
             else:
                 list_of_points.append(database.legal_concepts[tup[0].replace('§ ', '§\xa0')]['concept_bow_meanvector'])
+                
+                if label in ['concept_bow_meanvector',
+                                   'reverse_wmd_concept_bow',
+                                   'weighted_reverse_wmd_concept_bow',
+                                   'weighted_wmd_concept_bow',
+                                   'wmd_concept_bow']:
+                    list_of_bow_size.append(sum(database.legal_concepts[tup[0].replace('§ ', '§\xa0')]['concept_bow'].values()))
+                else:
+                    list_of_bow_size.append(sum(database.legal_concepts[tup[0].replace('§ ', '§\xa0')]['bow'].values()))
             list_of_types.append(key)
             list_of_types_two.append('Legal concept')
             raw_text = database.legal_concepts[tup[0].replace('§ ', '§\xa0')]['raw_text']
@@ -416,6 +427,7 @@ def get_visual_df(input_dict, database):
                         list_of_word_pair_ranks.append(rank)
                         dist = np.linalg.norm(input_dict['input_bow_meanvector']-vector)
                         list_of_distances.append(dist)
+                        list_of_bow_size.append(1)
                     if traveldistance[1] not in lc_names:
                         lc_names.append(traveldistance[1])
                         vector = database.word_embeddings[traveldistance[1]]
@@ -426,6 +438,7 @@ def get_visual_df(input_dict, database):
                         list_of_word_pair_ranks.append(rank)
                         dist = np.linalg.norm(input_dict['input_bow_meanvector']-vector)
                         list_of_distances.append(dist)
+                        list_of_bow_size.append(1)
                     rank += 1
                 for traveldistance in traveldistances[-10:]:
                     if traveldistance[0] not in lc_names:
@@ -438,6 +451,7 @@ def get_visual_df(input_dict, database):
                         list_of_word_pair_ranks.append(rank)
                         dist = np.linalg.norm(input_dict['input_bow_meanvector']-vector)
                         list_of_distances.append(dist)
+                        list_of_bow_size.append(1)
                     if traveldistance[1] not in lc_names:
                         lc_names.append(traveldistance[1])
                         vector = database.word_embeddings[traveldistance[1]]
@@ -448,6 +462,7 @@ def get_visual_df(input_dict, database):
                         list_of_word_pair_ranks.append(rank)
                         dist = np.linalg.norm(input_dict['input_bow_meanvector']-vector)
                         list_of_distances.append(dist)
+                        list_of_bow_size.append(1)
                     rank += 1
         
         if label == 'concept_vector' or label == 'concept_bow_meanvector':
@@ -472,6 +487,7 @@ def get_visual_df(input_dict, database):
                     list_of_word_pair_ranks.append(0)
                     dist = np.linalg.norm(input_dict['input_bow_meanvector']-vector)
                     list_of_distances.append(dist)
+                    list_of_bow_size.append(sum(database.legal_concepts[tup[0].replace('§ ', '§\xa0')]['concept_bow'].values()))
         
         
         xy_df = pd.DataFrame(two_d_distance_preserving_plotter(list_of_points, list_of_distances),
@@ -483,6 +499,7 @@ def get_visual_df(input_dict, database):
         label_df['Text'] = list_of_raw_text
         label_df['wordpair rank'] = list_of_word_pair_ranks
         label_df['Distance to input'] = list_of_distances
+        label_df['BoW size'] = list_of_bow_size
         label_df = pd.concat([label_df, xy_df], axis =1)
         
         visual_dfs[label] = label_df
@@ -593,18 +610,20 @@ test_input_list = [("En funktionær er en lønmodtager, som primært er ansat "
 
 #%% create input_visual_dfs
 
+#test_visual_dfs, test_input_dict = get_input_sentence_dicts(test_input_list[0][0], test_input_list[0][1], test_database)
+
 input_visual_dfs = get_inputs_visual_dfs(test_input_list, test_database)
 
 #%% Save input_visual_dfs
 
-with open("visualization_data/input_visual_dfs.p", "wb") as pickle_file:
+with open("visualization_data/input_visual_dfs_new.p", "wb") as pickle_file:
     pickle.dump(input_visual_dfs, pickle_file) 
 
-with open("visualization_data/word_idf.p", "wb") as pickle_file:
-    pickle.dump(test_database.word_idf, pickle_file) 
+#with open("visualization_data/word_idf.p", "wb") as pickle_file:
+#    pickle.dump(test_database.word_idf, pickle_file) 
 
-with open("visualization_data/stopwords_list.p", "wb") as pickle_file:
-    pickle.dump(test_database.stopwords, pickle_file) 
+#with open("visualization_data/stopwords_list.p", "wb") as pickle_file:
+#    pickle.dump(test_database.stopwords, pickle_file) 
 
 #%% Open pickled input visual_dfs
 

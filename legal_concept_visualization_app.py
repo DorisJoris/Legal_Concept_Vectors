@@ -22,7 +22,7 @@ import plotly.express as px
 
 #%% Open pickled input visual_dfs
 
-with open("visualization_data/input_visual_dfs.p", "rb") as pickle_file:
+with open("visualization_data/input_visual_dfs_new.p", "rb") as pickle_file:
     input_visual_dfs = pickle.load(pickle_file) 
     
 with open("visualization_data/word_idf.p", "rb") as pickle_file:
@@ -30,6 +30,10 @@ with open("visualization_data/word_idf.p", "rb") as pickle_file:
 
 with open("visualization_data/stopwords_list.p", "rb") as pickle_file:
     stopwords_list = pickle.load(pickle_file)     
+    
+with open("visualization_data/count_stats_df.p", "rb") as pickle_file:
+    count_stats_df = pickle.load(pickle_file)   
+    
 
 #%% plotly
 external_stylesheets = [dbc.themes.MINTY]
@@ -64,7 +68,10 @@ tab_latex = dbc.Card(dbc.CardBody([
 
 travel_dist_table = dbc.Card(dbc.CardBody([
     html.H4(id='travel_dist_table_title'),
-    html.Div(id='travel_dist_table')
+    dbc.Row([
+        dbc.Col(html.Div(id='travel_dist_table')),
+        dbc.Col(html.Div(id='word_table'))
+        ])
     ]))
 
 
@@ -145,10 +152,18 @@ app.layout = dbc.Container([
     Input("input_select", "value"),
     Input("distance_type", "value"))
 def init_multi_dropdowns(input_option, dist_option):
-    neighbour_values = input_visual_dfs[input_option][0][dist_option]['Neighbour type'].unique()
-    doc_values = input_visual_dfs[input_option][0][dist_option]['Point type'].unique()
     
-    return neighbour_values, neighbour_values, doc_values, doc_values
+    neighbour_options = input_visual_dfs[input_option][0][dist_option]['Neighbour type'].unique()
+    neighbour_values = list()
+    
+    for option in neighbour_options:
+        if 'Input' in option or 'closest' in option:
+            neighbour_values.append(option)
+    
+    doc_options = input_visual_dfs[input_option][0][dist_option]['Point type'].unique()
+    doc_values = ['Text', 'Vector', 'Legal concept']
+    
+    return neighbour_options, neighbour_values, doc_options, doc_values
 
 @app.callback(
     Output("table", "children"),
@@ -164,7 +179,7 @@ def update_table(input_option, dist_option, clickData, neighbour_options, doc_op
     output_df = output_df[output_df['Point type'].isin(doc_options)]
 
     
-    table_df = output_df[['Name','Neighbour type','Point type','Distance to input']]
+    table_df = output_df[['Name','Neighbour type','Point type','Distance to input','BoW size']]
     
     if clickData == None:
         return dash_table.DataTable(table_df.to_dict('records'), 
@@ -403,6 +418,7 @@ def set_travel_dist_dropdown(input_option,dist_option):
 @app.callback(
     Output('travel_dist_table', 'children'),
     Output('travel_dist_latex', 'children'),
+    Output('word_table', 'children'),
     Output('travel_dist_table_title', 'children'),
     Output('travel_dist_latex_title', 'children'),
     Input("input_select", "value"),
@@ -413,15 +429,26 @@ def set_travel_dist_dropdown(input_option,dist_option):
 
 def update_travel_dist_tables(input_option,dist_option,neighbour_type, travel_dist_range):
     if neighbour_type != 'Not a WMD':
-        name = input_visual_dfs[input_option][1]['input_min_dist'][dist_option][neighbour_type][0]
         travel_dist_list = input_visual_dfs[input_option][1]['input_min_dist'][dist_option][neighbour_type][1]['travel_distance_pairs']
+        
+        n = 0
+        eu_sum = 0
+        for tv_dist in travel_dist_list:
+          n += 1
+          eu_sum += tv_dist[3]
+        name = f"{input_visual_dfs[input_option][1]['input_min_dist'][dist_option][neighbour_type][0]}"
+        
         travel_dist_list = sorted(travel_dist_list, key=lambda tup: tup[2])
         if travel_dist_range > 0:
             travel_dist_list = travel_dist_list[:travel_dist_range]    
         else:
             travel_dist_list = travel_dist_list[travel_dist_range:]
             
-        travel_dist_df = pd.DataFrame(travel_dist_list, columns = ['Input word', 'Neighbour word','Travel distance'])
+        travel_dist_df = pd.DataFrame(travel_dist_list, columns = ['Input word', 'Neighbour word','Travel distance','Euclidean distance'])
+        
+        
+        words = list(travel_dist_df['Input word']) + list(travel_dist_df['Neighbour word'])
+        plot_df = count_stats_df[(count_stats_df['Word'].isin(words))]
         
         latex_code = travel_dist_df.to_latex(index=False,
                                         caption=(f'{input_option} + {dist_option} + {neighbour_type} + {name} travel distance'),
@@ -441,6 +468,13 @@ def update_travel_dist_tables(input_option,dist_option,neighbour_type, travel_di
                                       sort_mode="multi"
                                           ) 
         
-        return table, latex_list, name, name 
+        word_table = dash_table.DataTable(plot_df.to_dict('records'), 
+                                      [{"name": i, "id": i} for i in plot_df.columns],
+                                      style_cell={'textAlign': 'left'},
+                                      sort_action="native",
+                                      sort_mode="multi"
+                                          ) 
+        
+        return table, latex_list, word_table, name, name 
         
 app.run_server(debug=False)
