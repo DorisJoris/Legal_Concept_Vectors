@@ -1,5 +1,9 @@
 # Legal_Concept_Vectors
-This project is part of my thesis "The Usability of Legal-Concept-Vectors for data driven legal analysis".
+The law has become too complex to be understood by others than lawyers and legal experts. But the law constitutes the rules of the social game that everyone is forced to play. For this reason, laws and other legal documents are openly accessible in most democracies. Though, accessibility alone is not worth much without the ability to understand what is written in these documents.
 
-I'm using a graph structure of document-elements to represent legal documents as interconnected legal concepts and use the Word Mover Distance (Kusner et al. 2015) 
-to find the closest legal concept to an input text.   
+In January 2022, DR reported that an unknown number of unemployable citizens had gotten their employment benefits unlawfully reduced. The responsible authorities had failed to correctly account for the citizen's medical situation regarding a 225-hour work requirement. Cases like these testify to the need for an accessible way to check administrative decisions. The automation of legal analysis is one possible way to make legal expertise publicly accessible.
+This project aims to assess the usability of a vector representation of legal concepts for data-driven legal analysis. The term legal concept is used to describe the semantics of elements in legal texts with respect to their context. Examples of such text elements could be full documents, chapters, paragraphs, single sentences, etc. It is assumed that the structure of a document and the use of references in a document is intentional and meaningful. Therefore the semantics of a text element is modeled as a sum of its subsets, superset, and both in- and outgoing references.
+
+The vector representation of these legal concepts is inspired by the word mover distance proposed by Kusner et al.
+This project will compare two different word centroid based vector representations as well as two bag-of-words based representations. 
+The bag-of-words based representations are analyzed with four different word mover distance based distance scores.
