@@ -42,14 +42,47 @@ if __name__ == "__main__":
 #%% Add documents
 if __name__ == "__main__":    
     url_list = [
-         'https://www.retsinformation.dk/api/document/eli/lta/2021/235', #barselsloven
-         'https://www.retsinformation.dk/api/document/eli/lta/2008/907', #lov om tidsbegrænset ansaettelse
-         'https://www.retsinformation.dk/api/document/eli/lta/2022/336', #lov om investeringsforeninger m.v.
-         'https://www.retsinformation.dk/api/document/eli/lta/2016/193', #Bekendtgørelse af lov om aftaler og andre retshandler på formuerettens område
-         'https://www.retsinformation.dk/api/document/eli/lta/2013/1457', #Lov om forbrugeraftaler
+        'https://www.retsinformation.dk/api/document/eli/lta/2021/235', #barselsloven
+        'https://www.retsinformation.dk/api/document/eli/lta/2008/907', #lov om tidsbegrænset ansaettelse
+        'https://www.retsinformation.dk/api/document/eli/lta/2022/336', #lov om investeringsforeninger m.v.
+        'https://www.retsinformation.dk/api/document/eli/lta/2016/193', #Bekendtgørelse af lov om aftaler og andre retshandler på formuerettens område
+        'https://www.retsinformation.dk/api/document/eli/lta/2013/1457', #Lov om forbrugeraftaler
         'https://www.retsinformation.dk/api/document/eli/lta/2021/1284',#Bekendtgørelse af lov om indkomstskat for personer m.v.
-        'https://www.retsinformation.dk/api/document/eli/lta/2021/25' #Bekendtgørelse af lov om godkendte revisorer og revisionsvirksomheder (revisorloven)1)
+        'https://www.retsinformation.dk/api/document/eli/lta/2021/25', #Bekendtgørelse af lov om godkendte revisorer og revisionsvirksomheder (revisorloven)1)
+        'https://www.retsinformation.dk/api/document/eli/lta/2010/240', #Ansættelsesbevisloven
+        'https://www.retsinformation.dk/api/document/eli/lta/2021/242', #Afskrivningsloven
+        'https://www.retsinformation.dk/api/document/eli/lta/2018/1070', #Erstatningsansvarsloven
+        'https://www.retsinformation.dk/api/document/eli/lta/2022/956', #Erhvervsuddannelsesloven
+        'https://www.retsinformation.dk/api/document/eli/lta/2021/824', #Kildeskatteloven
+        'https://www.retsinformation.dk/api/document/eli/lta/2011/645', #Ligebehandlingsloven
+        'https://www.retsinformation.dk/api/document/eli/lta/2019/156', #Ligelønsloven
+        'https://www.retsinformation.dk/api/document/eli/lta/2022/866', #Markedsføringsloven
+        'https://www.retsinformation.dk/api/document/eli/lta/2021/1853', #Købeloven
+        'https://www.retsinformation.dk/api/document/eli/lta/2014/332', #Kommissionsloven
+        'https://www.retsinformation.dk/api/document/eli/lta/2015/1123', #lov om forbrugerbeskyttelse ved erhvervelse af fast ejendom m.v.
+        'https://www.retsinformation.dk/api/document/eli/lta/2021/510', #lov om formidling af fast ejendom m.v.
+        'https://www.retsinformation.dk/api/document/eli/lta/2022/866', #Markedsføringsloven
+        'https://www.retsinformation.dk/api/document/eli/lta/2014/459', #Renteloven
+        'https://www.retsinformation.dk/api/document/eli/lta/2021/242', #Afskrivningsloven
+        'https://www.retsinformation.dk/api/document/eli/lta/2015/47', #Boafgiftsloven
+        'https://www.retsinformation.dk/api/document/eli/lta/2019/132', #Ejendomsavancebeskatningsloven
+        'https://www.retsinformation.dk/api/document/eli/lta/2019/984', #Erhvervsfondsloven
+        'https://www.retsinformation.dk/api/document/eli/lta/2014/1175', #Etableringskontoloven
+        'https://www.retsinformation.dk/api/document/eli/lta/2020/1590', #Ejendomsværdiskatteloven
+        'https://www.retsinformation.dk/api/document/eli/lta/2020/2020', #Fondsloven
+        'https://www.retsinformation.dk/api/document/eli/lta/2021/743', #Fusionsskatteloven
+        'https://www.retsinformation.dk/api/document/eli/lta/2014/433', #Forvaltningsloven
+        'https://www.retsinformation.dk/api/document/eli/lta/2015/48', #Opkrævnings- og inddrivelsesloven
+        'https://www.retsinformation.dk/api/document/eli/lta/2019/353', #Konkursskatteloven
+        'https://www.retsinformation.dk/api/document/eli/lta/2021/1735', #Ligningsloven
+        'https://www.retsinformation.dk/api/document/eli/lta/2013/349', #Ombudsmandsloven
+        'https://www.retsinformation.dk/api/document/eli/lta/2019/1121', #Retssikkerhedsloven
+        'https://www.retsinformation.dk/api/document/eli/lta/2019/774', #Ægtefælleloven
+        'https://www.retsinformation.dk/api/document/eli/lta/2021/251', #Selskabsskatteloven
+        
+        
         ]
+    
     
     for url in url_list:
         test_database.add_retsinfo_doc(url)
@@ -74,9 +107,9 @@ if __name__ == "__main__":
     # bm_df = test_database.bow_meanvector_df
     
     example_lc = test_database.random_lc()
-    example_lc = test_database.legal_concepts['LBK nr 336 af 11/03/2022']
+    example_lc = test_database.legal_concepts['Stk. 4._§ 10._LBK nr 1284 af 14/06/2021']
     
-    with open("databases/test_database.p", "wb") as pickle_file:
+    with open("databases/w2v_database.p", "wb") as pickle_file:
         pickle.dump(test_database, pickle_file) 
 
 

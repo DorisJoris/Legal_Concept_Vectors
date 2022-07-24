@@ -362,6 +362,18 @@ def _litra_nr_property_gen(tag, parents, tag_position):
                          }
     return tag_property_dict
 
+def _sec_litra_nr_property_gen(tag, parents, tag_position):
+    tag_html = str(tag)
+    tag_raw_text = tag.text
+    name = tag.find('span', attrs={'class': 'Liste2Nr'}).text
+    tag_property_dict = {'name': name, 
+                         'position':tag_position+1,
+                         'html':tag_html,
+                         'raw_text':tag_raw_text,
+                         'parent': parents
+                         }
+    return tag_property_dict
+
 def sentence_litra_nr_property_gen(stk_property_list):
     litra_property_list = []
     nr_property_list = []
@@ -387,7 +399,24 @@ def sentence_litra_nr_property_gen(stk_property_list):
                 parent_list = [tag_property_dict['name']] + parents    
                 new_sentence_property_list = _sentence_property_gen(tag, parent_list, 0)
                 sentence_property_list = sentence_property_list + new_sentence_property_list
+            
+                sec_tag_position = 0
+                sec_parents = [tag_property_dict['name']] + parents
                 
+            elif tag['class'][0] == 'Liste2':
+                sec_tag_property_dict = _sec_litra_nr_property_gen(tag, 
+                                                           sec_parents, 
+                                                           tag_position)
+                sec_tag_position += 1
+                if tag_property_dict['name'][0:-1].isnumeric():
+                    nr_property_list.append(sec_tag_property_dict)
+                else:
+                    litra_property_list.append(sec_tag_property_dict)
+                    
+                parent_list = [sec_tag_property_dict['name']] + sec_parents    
+                new_sentence_property_list = _sentence_property_gen(tag, parent_list, 0)
+                sentence_property_list = sentence_property_list + new_sentence_property_list
+            
             else:
                 
                 new_sentence_property_list = _sentence_property_gen(tag,

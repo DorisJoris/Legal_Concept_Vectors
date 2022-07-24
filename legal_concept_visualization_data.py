@@ -33,7 +33,10 @@ def calculate_input_bow_meanvector(input_dict, database):
     input_dict['input_oov_list'] = []
     
     for sentence_dict in input_dict['sentence_dicts']:
-        input_dict['input_bow_meanvector'] += sentence_dict['input_bow_meanvector']
+        try:
+            input_dict['input_bow_meanvector'] += sentence_dict['input_bow_meanvector']
+        except:
+            continue
         input_dict['input_oov_list'] = input_dict['input_oov_list'] + sentence_dict['oov_list']
         for word in sentence_dict['input_bow']:
             if word in input_dict['input_bow'].keys():
@@ -58,16 +61,16 @@ def calculate_min_dist(input_dict, database, nbrs_cbowm, nbrs_cv):
     cbowm_distances, cbowm_neighbours = nbrs_cbowm.kneighbors(search_vector.reshape(1,-1))
     cv_distances, cv_neighbours = nbrs_cv.kneighbors(search_vector.reshape(1,-1))
     
-    documents = [
-        ('LBK nr 1002 af 24/08/2017','Bekendtgørelse af lov om retsforholdet mellem arbejdsgivere og funktionærer'),
-        ('LBK nr 235 af 12/02/2021','Bekendtgørelse af lov om ret til orlov og dagpenge ved barsel (barselsloven)'),
-        ('LBK nr 907 af 11/09/2008','Bekendtgørelse af lov om tidsbegrænset ansættelse'),
-        ('LBK nr 336 af 11/03/2022','Bekendtgørelse af lov om investeringsforeninger m.v.'),
-        ('LBK nr 193 af 02/03/2016','Bekendtgørelse af lov om aftaler og andre retshandler på formuerettens område'),
-        ('LOV nr 1457 af 17/12/2013','Lov om forbrugeraftaler'),
-        ('LBK nr 1284 af 14/06/2021','Bekendtgørelse af lov om indkomstskat for personer m.v. (personskatteloven)'),
-        ('LBK nr 25 af 08/01/2021','Bekendtgørelse af lov om godkendte revisorer og revisionsvirksomheder (revisorloven)')
-        ]
+    # documents = [
+    #     ('LBK nr 1002 af 24/08/2017','Bekendtgørelse af lov om retsforholdet mellem arbejdsgivere og funktionærer'),
+    #     ('LBK nr 235 af 12/02/2021','Bekendtgørelse af lov om ret til orlov og dagpenge ved barsel (barselsloven)'),
+    #     ('LBK nr 907 af 11/09/2008','Bekendtgørelse af lov om tidsbegrænset ansættelse'),
+    #     ('LBK nr 336 af 11/03/2022','Bekendtgørelse af lov om investeringsforeninger m.v.'),
+    #     ('LBK nr 193 af 02/03/2016','Bekendtgørelse af lov om aftaler og andre retshandler på formuerettens område'),
+    #     ('LOV nr 1457 af 17/12/2013','Lov om forbrugeraftaler'),
+    #     ('LBK nr 1284 af 14/06/2021','Bekendtgørelse af lov om indkomstskat for personer m.v. (personskatteloven)'),
+    #     ('LBK nr 25 af 08/01/2021','Bekendtgørelse af lov om godkendte revisorer og revisionsvirksomheder (revisorloven)')
+    #     ]
     
     input_dict['input_min_dist'] = {
         'concept_vector':dict(),
@@ -244,23 +247,23 @@ def calculate_min_dist(input_dict, database, nbrs_cbowm, nbrs_cv):
                 break
         
         
-        for b in [0,2,3,4]:
-            winners = []
-            for key in input_dict['input_min_dist'][bow_type[b]].keys():
-                winners.append(input_dict['input_min_dist'][bow_type[b]][key][0])
-            doc_nr = 0
-            for doc in documents:
-                if doc[0] not in winners:
-                    doc_nr += 1
-                    wmd_dict = legal_concept_wmd.wmd(input_dict['input_bow'], 
-                                                     database.legal_concepts[doc[0]][bow_type[1]], 
-                                                     database.word_embeddings,
-                                                     database.word_idf)
-                    if b == 0:
-                        wmd_nr = 0
-                    else:
-                        wmd_nr = b-1
-                    input_dict['input_min_dist'][bow_type[b]][f'Other legal doc {doc_nr}'] = (str(doc[0]),wmd_dict[wmd_nr])
+        # for b in [0,2,3,4]:
+        #     winners = []
+        #     for key in input_dict['input_min_dist'][bow_type[b]].keys():
+        #         winners.append(input_dict['input_min_dist'][bow_type[b]][key][0])
+        #     # doc_nr = 0
+            # for doc in documents:
+            #     if doc[0] not in winners:
+            #         doc_nr += 1
+            #         wmd_dict = legal_concept_wmd.wmd(input_dict['input_bow'], 
+            #                                          database.legal_concepts[doc[0]][bow_type[1]], 
+            #                                          database.word_embeddings,
+            #                                          database.word_idf)
+            #         if b == 0:
+            #             wmd_nr = 0
+            #         else:
+            #             wmd_nr = b-1
+            #         input_dict['input_min_dist'][bow_type[b]][f'Other legal doc {doc_nr}'] = (str(doc[0]),wmd_dict[wmd_nr])
                         
             
     return input_dict
@@ -358,16 +361,16 @@ def get_visual_df(input_dict, database):
                        'wmd_bow',
                        'wmd_concept_bow']
     
-    documents = [
-        ('LBK nr 1002 af 24/08/2017','Bekendtgørelse af lov om retsforholdet mellem arbejdsgivere og funktionærer'),
-        ('LBK nr 235 af 12/02/2021','Bekendtgørelse af lov om ret til orlov og dagpenge ved barsel (barselsloven)'),
-        ('LBK nr 907 af 11/09/2008','Bekendtgørelse af lov om tidsbegrænset ansættelse'),
-        ('LBK nr 336 af 11/03/2022','Bekendtgørelse af lov om investeringsforeninger m.v.'),
-        ('LBK nr 193 af 02/03/2016','Bekendtgørelse af lov om aftaler og andre retshandler på formuerettens område'),
-        ('LOV nr 1457 af 17/12/2013','Lov om forbrugeraftaler'),
-        ('LBK nr 1284 af 14/06/2021','Bekendtgørelse af lov om indkomstskat for personer m.v. (personskatteloven)'),
-        ('LBK nr 25 af 08/01/2021','Bekendtgørelse af lov om godkendte revisorer og revisionsvirksomheder (revisorloven)')
-        ]
+    # documents = [
+    #     ('LBK nr 1002 af 24/08/2017','Bekendtgørelse af lov om retsforholdet mellem arbejdsgivere og funktionærer'),
+    #     ('LBK nr 235 af 12/02/2021','Bekendtgørelse af lov om ret til orlov og dagpenge ved barsel (barselsloven)'),
+    #     ('LBK nr 907 af 11/09/2008','Bekendtgørelse af lov om tidsbegrænset ansættelse'),
+    #     ('LBK nr 336 af 11/03/2022','Bekendtgørelse af lov om investeringsforeninger m.v.'),
+    #     ('LBK nr 193 af 02/03/2016','Bekendtgørelse af lov om aftaler og andre retshandler på formuerettens område'),
+    #     ('LOV nr 1457 af 17/12/2013','Lov om forbrugeraftaler'),
+    #     ('LBK nr 1284 af 14/06/2021','Bekendtgørelse af lov om indkomstskat for personer m.v. (personskatteloven)'),
+    #     ('LBK nr 25 af 08/01/2021','Bekendtgørelse af lov om godkendte revisorer og revisionsvirksomheder (revisorloven)')
+    #     ]
     
     visual_dfs = dict()
     
@@ -465,29 +468,29 @@ def get_visual_df(input_dict, database):
                         list_of_bow_size.append(1)
                     rank += 1
         
-        if label == 'concept_vector' or label == 'concept_bow_meanvector':
-            doc_nr = 0
-            for doc in documents:
-                if doc not in lc_names:
-                    doc_nr += 1
-                    lc_names.append(doc[0])
-                    if label == 'concept_vector':
-                        vector = database.legal_concepts[doc[0]]['concept_vector']
-                        list_of_points.append(vector)
-                    else:
-                        vector = database.legal_concepts[doc[0]]['concept_bow_meanvector']
-                        list_of_points.append(vector)
+        # if label == 'concept_vector' or label == 'concept_bow_meanvector':
+        #     doc_nr = 0
+        #     for doc in documents:
+        #         if doc not in lc_names:
+        #             doc_nr += 1
+        #             lc_names.append(doc[0])
+        #             if label == 'concept_vector':
+        #                 vector = database.legal_concepts[doc[0]]['concept_vector']
+        #                 list_of_points.append(vector)
+        #             else:
+        #                 vector = database.legal_concepts[doc[0]]['concept_bow_meanvector']
+        #                 list_of_points.append(vector)
                    
-                    list_of_types.append(f'Other legal doc {doc_nr}')
-                    list_of_types_two.append('Legal concept')
-                    #list_of_raw_text.append(doc[1])
-                    raw_text = database.legal_concepts[doc[0]]['raw_text']
-                    raw_text = re.sub('  ', ' ', raw_text)
-                    list_of_raw_text.append(raw_text)
-                    list_of_word_pair_ranks.append(0)
-                    dist = np.linalg.norm(input_dict['input_bow_meanvector']-vector)
-                    list_of_distances.append(dist)
-                    list_of_bow_size.append(sum(database.legal_concepts[tup[0].replace('§ ', '§\xa0')]['concept_bow'].values()))
+        #             list_of_types.append(f'Other legal doc {doc_nr}')
+        #             list_of_types_two.append('Legal concept')
+        #             #list_of_raw_text.append(doc[1])
+        #             raw_text = database.legal_concepts[doc[0]]['raw_text']
+        #             raw_text = re.sub('  ', ' ', raw_text)
+        #             list_of_raw_text.append(raw_text)
+        #             list_of_word_pair_ranks.append(0)
+        #             dist = np.linalg.norm(input_dict['input_bow_meanvector']-vector)
+        #             list_of_distances.append(dist)
+        #             list_of_bow_size.append(sum(database.legal_concepts[tup[0].replace('§ ', '§\xa0')]['concept_bow'].values()))
         
         
         xy_df = pd.DataFrame(two_d_distance_preserving_plotter(list_of_points, list_of_distances),
@@ -542,8 +545,10 @@ def get_input_sentence_dicts(text, text_id, database):
     # input_dict['bm_2d'] = database.pca_bow_meanvector.transform(input_dict['input_bow_meanvector'].reshape(1,-1))
     
     input_dict = calculate_min_dist(input_dict, database, nbrs_cbowm, nbrs_cv)
-    
-    visual_dfs = get_visual_df(input_dict, database)
+    try:
+        visual_dfs = get_visual_df(input_dict, database)
+    except:
+        visual_dfs = pd.DataFrame
     
     print(datetime.now()-start)
     return visual_dfs, input_dict
@@ -558,361 +563,363 @@ def get_inputs_visual_dfs(input_list, database):
     return input_visual_dfs
 
 #%% Open database
-
-#open data
-with open("databases/test_database.p", "rb") as pickle_file:
-    test_database = pickle.load(pickle_file) 
-    
-example_lc = test_database.random_lc()
+if __name__ == "__main__":
+    #open data
+    with open("databases/test_database.p", "rb") as pickle_file:
+        test_database = pickle.load(pickle_file) 
+        
+    example_lc = test_database.random_lc()
 
 
 
 #%% Input text
-test_input_list = [("En funktionær er en lønmodtager, som primært er ansat "
-                   +"inden for handel- og kontorområdet. " 
-                   +"Du kan også være funktionær, hvis du udfører "
-                   +"lagerarbejde eller tekniske og kliniske ydelser.",
-                   "En funktionær er en lønmodtager... (Funktionærloven)"),#Funktionærloven -> https://www.frie.dk/find-svar/ansaettelsesvilkaar/funktionaerloven/#:~:text=En%20funktion%C3%A6r%20er%20en%20l%C3%B8nmodtager,arbejdstid%20er%20minimum%208%20timer.
-                   
-                   ("Der er en lang række fleksible muligheder - specielt for de forældre, "
-                   +"som gerne vil vende tilbage til arbejdet efter for eksempel seks eller "
-                   +"otte måneders orlov og gemme resten af orloven, til barnet er blevet lidt ældre. "
-                   +"Eller for de forældre, der ønsker at dele orloven eller starte på arbejde på "
-                   +"nedsat tid og dermed forlænge orloven. Fleksibiliteten forudsætter i de "
-                   +"fleste tilfælde, at der er indgået en aftale med arbejdsgiveren.", 
-                   "Der er en lang række fleksible... (Barselsloven)"),#Barselsloven -> https://bm.dk/arbejdsomraader/arbejdsvilkaar/barselsorlov/barselsorloven-hvor-meget-orlov-og-hvordan-kan-den-holdes/
-                   
-                   ("Når du er tidsbegrænset ansat, gælder der et princip om, at du ikke "
-                   +"må forskelsbehandles i forhold til virksomhedens fastansatte, "
-                   +"medmindre forskelsbehandlingen er begrundet i objektive forhold. "
-                   +"Du har altså de samme rettigheder som de fastansatte.", 
-                   "Når du er tidsbegrænset ansat... (Lov om tidsbegrænset ansættelse"),#Tidsbegrænset ansættelse -> https://sl.dk/faa-svar/ansaettelse/tidsbegraenset-ansaettelse
-                   
-                   ("Person A er bogholder.", 
-                    "Person A er bogholder."),
-                   
-                   ("Bogholderen Anja venter sit første barn. Hendes termin nærmer sig med hastige skridt.",
-                    "Bogholderen Anja venter første barn..."),
-                   
-                   ("Jan's kone er gravid. Han glæder sig meget til at være hjemmegående og bruge tid med hans søn.",
-                    "Jan's kone er gravid..."),
-                   
-                   ("Den nye malersvend blev fyret efter en uge.",
-                    "Den nye malersvend blev fyret efter en uge."),
-                   
-                   ("Den nye salgschef blev fyret efter en uge.", 
-                    "Den nye salgschef blev fyret efter en uge.")
-                   ]   
-
-
-
+if __name__ == "__main__":
+    test_input_list = [("En funktionær er en lønmodtager, som primært er ansat "
+                       +"inden for handel- og kontorområdet. " 
+                       +"Du kan også være funktionær, hvis du udfører "
+                       +"lagerarbejde eller tekniske og kliniske ydelser.",
+                       "En funktionær er en lønmodtager... (Funktionærloven)"),#Funktionærloven -> https://www.frie.dk/find-svar/ansaettelsesvilkaar/funktionaerloven/#:~:text=En%20funktion%C3%A6r%20er%20en%20l%C3%B8nmodtager,arbejdstid%20er%20minimum%208%20timer.
+                       
+                       ("Der er en lang række fleksible muligheder - specielt for de forældre, "
+                       +"som gerne vil vende tilbage til arbejdet efter for eksempel seks eller "
+                       +"otte måneders orlov og gemme resten af orloven, til barnet er blevet lidt ældre. "
+                       +"Eller for de forældre, der ønsker at dele orloven eller starte på arbejde på "
+                       +"nedsat tid og dermed forlænge orloven. Fleksibiliteten forudsætter i de "
+                       +"fleste tilfælde, at der er indgået en aftale med arbejdsgiveren.", 
+                       "Der er en lang række fleksible... (Barselsloven)"),#Barselsloven -> https://bm.dk/arbejdsomraader/arbejdsvilkaar/barselsorlov/barselsorloven-hvor-meget-orlov-og-hvordan-kan-den-holdes/
+                       
+                       ("Når du er tidsbegrænset ansat, gælder der et princip om, at du ikke "
+                       +"må forskelsbehandles i forhold til virksomhedens fastansatte, "
+                       +"medmindre forskelsbehandlingen er begrundet i objektive forhold. "
+                       +"Du har altså de samme rettigheder som de fastansatte.", 
+                       "Når du er tidsbegrænset ansat... (Lov om tidsbegrænset ansættelse"),#Tidsbegrænset ansættelse -> https://sl.dk/faa-svar/ansaettelse/tidsbegraenset-ansaettelse
+                       
+                       ("Person A er bogholder.", 
+                        "Person A er bogholder."),
+                       
+                       ("Bogholderen Anja venter sit første barn. Hendes termin nærmer sig med hastige skridt.",
+                        "Bogholderen Anja venter første barn..."),
+                       
+                       ("Jan's kone er gravid. Han glæder sig meget til at være hjemmegående og bruge tid med hans søn.",
+                        "Jan's kone er gravid..."),
+                       
+                       ("Den nye malersvend blev fyret efter en uge.",
+                        "Den nye malersvend blev fyret efter en uge."),
+                       
+                       ("Den nye salgschef blev fyret efter en uge.", 
+                        "Den nye salgschef blev fyret efter en uge.")
+                       ]   
+    
+    
+    
 
 
 #%% create input_visual_dfs
-
+if __name__ == "__main__":
 #test_visual_dfs, test_input_dict = get_input_sentence_dicts(test_input_list[0][0], test_input_list[0][1], test_database)
 
-input_visual_dfs = get_inputs_visual_dfs(test_input_list, test_database)
+    input_visual_dfs = get_inputs_visual_dfs(test_input_list, test_database)
 
 #%% Save input_visual_dfs
-
-with open("visualization_data/input_visual_dfs_new.p", "wb") as pickle_file:
-    pickle.dump(input_visual_dfs, pickle_file) 
-
-#with open("visualization_data/word_idf.p", "wb") as pickle_file:
-#    pickle.dump(test_database.word_idf, pickle_file) 
-
-#with open("visualization_data/stopwords_list.p", "wb") as pickle_file:
-#    pickle.dump(test_database.stopwords, pickle_file) 
+if __name__ == "__main__":
+    with open("visualization_data/input_visual_dfs_new.p", "wb") as pickle_file:
+        pickle.dump(input_visual_dfs, pickle_file) 
+    
+    #with open("visualization_data/word_idf.p", "wb") as pickle_file:
+    #    pickle.dump(test_database.word_idf, pickle_file) 
+    
+    #with open("visualization_data/stopwords_list.p", "wb") as pickle_file:
+    #    pickle.dump(test_database.stopwords, pickle_file) 
 
 #%% Open pickled input visual_dfs
-
-with open("visualization_data/input_visual_dfs.p", "rb") as pickle_file:
-    input_visual_dfs = pickle.load(pickle_file) 
+if __name__ == "__main__":
+    with open("visualization_data/input_visual_dfs.p", "rb") as pickle_file:
+        input_visual_dfs = pickle.load(pickle_file) 
 
 #%% plotly
-external_stylesheets = [dbc.themes.MINTY]
-app = Dash(__name__, external_stylesheets=external_stylesheets)
-
-tab_graph = dbc.Card(dbc.CardBody([
-    dcc.Graph(id="graph"),
-    html.P(['Selected point:']),
-    html.P(id='text-print', style= {"width": "90%",
-                                    "height": "150px",
-                                    "padding": "2px",
-                                    "margin-left":"5%",
-                                    "margin-right":"5%",
-                                    "border": "1px solid grey",
-                                    "border-radius": "5px",
-                                    "overflow-wrap": "break-word",
-                                    "overflow": "scroll"
-                                    })
-    ]))
-
-tab_table = dbc.Card(dbc.CardBody([
-    html.Div(id='table')
-    ]))
-
-tab_latex = dbc.Card(dbc.CardBody([
-    dbc.Row([
-        dbc.Col(dbc.Label('Include columns:'),width=2),
-        dbc.Col(dcc.Dropdown(id='latex_dropdown',multi=True))
+if __name__ == "__main__":
+    external_stylesheets = [dbc.themes.MINTY]
+    app = Dash(__name__, external_stylesheets=external_stylesheets)
+    
+    tab_graph = dbc.Card(dbc.CardBody([
+        dcc.Graph(id="graph"),
+        html.P(['Selected point:']),
+        html.P(id='text-print', style= {"width": "90%",
+                                        "height": "150px",
+                                        "padding": "2px",
+                                        "margin-left":"5%",
+                                        "margin-right":"5%",
+                                        "border": "1px solid grey",
+                                        "border-radius": "5px",
+                                        "overflow-wrap": "break-word",
+                                        "overflow": "scroll"
+                                        })
+        ]))
+    
+    tab_table = dbc.Card(dbc.CardBody([
+        html.Div(id='table')
+        ]))
+    
+    tab_latex = dbc.Card(dbc.CardBody([
+        dbc.Row([
+            dbc.Col(dbc.Label('Include columns:'),width=2),
+            dbc.Col(dcc.Dropdown(id='latex_dropdown',multi=True))
+            ]),
+        dbc.Card(html.Div(id='latex'))
+        ]))
+    
+    app.layout = dbc.Container([
+        html.H1('Legal concept experiments'),
+        dbc.Row([
+            dbc.Col(dbc.Label('Select input:'),width=2),
+            dbc.Col(dcc.Dropdown(
+                id="input_select",
+                options=list(input_visual_dfs.keys()),
+                value=list(input_visual_dfs.keys())[0],
+                multi=False
+            )),
         ]),
-    dbc.Card(html.Div(id='latex'))
-    ]))
-
-app.layout = dbc.Container([
-    html.H1('Legal concept experiments'),
-    dbc.Row([
-        dbc.Col(dbc.Label('Select input:'),width=2),
-        dbc.Col(dcc.Dropdown(
-            id="input_select",
-            options=list(input_visual_dfs.keys()),
-            value=list(input_visual_dfs.keys())[0],
-            multi=False
-        )),
-    ]),
-    dbc.Row([
-        dbc.Col(dbc.Label('Select distance measure:'),width=2),
-        dbc.Col(dcc.Dropdown(
-            id="distance_type",
-            options=['concept_bow_meanvector',
-                               'concept_vector',
-                               'reverse_wmd_bow',
-                               'reverse_wmd_concept_bow',
-                               'weighted_reverse_wmd_bow',
-                               'weighted_reverse_wmd_concept_bow',
-                               'weighted_wmd_bow',
-                               'weighted_wmd_concept_bow',
-                               'wmd_bow',
-                               'wmd_concept_bow'],
-            value='concept_bow_meanvector',
-            multi=False
-        )),
-    ]),
-    dbc.Row([
-        dbc.Col(dbc.Label('Select neighbour type:'),width=2),
-        dbc.Col(dcc.Dropdown(id='neighbour_dropdown',multi=True))
-    ]),
-    dbc.Row([
-        dbc.Col(dbc.Label('Select point type:'),width=2),
-        dbc.Col(dcc.Dropdown(id='document_dropdown',multi=True))
-    ]),
-    dbc.Tabs(
-        [dbc.Tab(tab_graph, label='Graph'),
-         dbc.Tab(tab_table, label='Table'),
-         dbc.Tab(tab_latex, label='Latex table code')
-            ]
-        )
+        dbc.Row([
+            dbc.Col(dbc.Label('Select distance measure:'),width=2),
+            dbc.Col(dcc.Dropdown(
+                id="distance_type",
+                options=['concept_bow_meanvector',
+                                   'concept_vector',
+                                   'reverse_wmd_bow',
+                                   'reverse_wmd_concept_bow',
+                                   'weighted_reverse_wmd_bow',
+                                   'weighted_reverse_wmd_concept_bow',
+                                   'weighted_wmd_bow',
+                                   'weighted_wmd_concept_bow',
+                                   'wmd_bow',
+                                   'wmd_concept_bow'],
+                value='concept_bow_meanvector',
+                multi=False
+            )),
+        ]),
+        dbc.Row([
+            dbc.Col(dbc.Label('Select neighbour type:'),width=2),
+            dbc.Col(dcc.Dropdown(id='neighbour_dropdown',multi=True))
+        ]),
+        dbc.Row([
+            dbc.Col(dbc.Label('Select point type:'),width=2),
+            dbc.Col(dcc.Dropdown(id='document_dropdown',multi=True))
+        ]),
+        dbc.Tabs(
+            [dbc.Tab(tab_graph, label='Graph'),
+             dbc.Tab(tab_table, label='Table'),
+             dbc.Tab(tab_latex, label='Latex table code')
+                ]
+            )
+        
+    ])
     
-])
-
-@app.callback(
-    Output('neighbour_dropdown','options'),
-    Output('neighbour_dropdown','value'),
-    Output('document_dropdown','options'),
-    Output('document_dropdown','value'),
-    Input("input_select", "value"),
-    Input("distance_type", "value"))
-def init_multi_dropdowns(input_option, dist_option):
-    neighbour_values = input_visual_dfs[input_option][0][dist_option]['Neighbour type'].unique()
-    doc_values = input_visual_dfs[input_option][0][dist_option]['Point type'].unique()
+    @app.callback(
+        Output('neighbour_dropdown','options'),
+        Output('neighbour_dropdown','value'),
+        Output('document_dropdown','options'),
+        Output('document_dropdown','value'),
+        Input("input_select", "value"),
+        Input("distance_type", "value"))
+    def init_multi_dropdowns(input_option, dist_option):
+        neighbour_values = input_visual_dfs[input_option][0][dist_option]['Neighbour type'].unique()
+        doc_values = input_visual_dfs[input_option][0][dist_option]['Point type'].unique()
+        
+        return neighbour_values, neighbour_values, doc_values, doc_values
     
-    return neighbour_values, neighbour_values, doc_values, doc_values
-
-@app.callback(
-    Output("table", "children"),
-    Input("input_select", "value"),
-    Input("distance_type", "value"),
-    Input('graph', 'clickData'),
-    Input('neighbour_dropdown','value'),
-    Input('document_dropdown','value'))
-def update_table(input_option, dist_option, clickData, neighbour_options, doc_options):
+    @app.callback(
+        Output("table", "children"),
+        Input("input_select", "value"),
+        Input("distance_type", "value"),
+        Input('graph', 'clickData'),
+        Input('neighbour_dropdown','value'),
+        Input('document_dropdown','value'))
+    def update_table(input_option, dist_option, clickData, neighbour_options, doc_options):
+        
+        output_df = input_visual_dfs[input_option][0][dist_option]
+        output_df = output_df[output_df['Neighbour type'].isin(neighbour_options)]
+        output_df = output_df[output_df['Point type'].isin(doc_options)]
     
-    output_df = input_visual_dfs[input_option][0][dist_option]
-    output_df = output_df[output_df['Neighbour type'].isin(neighbour_options)]
-    output_df = output_df[output_df['Point type'].isin(doc_options)]
-
-    
-    table_df = output_df[['Name','Neighbour type','Point type','Distance to input']]
-    
-    if clickData == None:
-        return dash_table.DataTable(table_df.to_dict('records'), 
-                                  [{"name": i, "id": i} for i in table_df.columns],
-                                  style_cell={'textAlign': 'left'},
-                                  sort_action="native",
-                                  sort_mode="multi"
-                                      ) 
-    else:
-        filter_query = '{Name} = "' +clickData['points'][0]['text'] +'"'
-        print(filter_query)
-        return dash_table.DataTable(table_df.to_dict('records'), 
-                                  [{"name": i, "id": i} for i in table_df.columns],
-                                  style_cell={'textAlign': 'left'},
-                                  sort_action="native",
-                                  sort_mode="multi",
-                                  style_data_conditional=[{
-                                      'if': {
-                                          'filter_query': filter_query,
-                                          'column_id': 'Name'
+        
+        table_df = output_df[['Name','Neighbour type','Point type','Distance to input']]
+        
+        if clickData == None:
+            return dash_table.DataTable(table_df.to_dict('records'), 
+                                      [{"name": i, "id": i} for i in table_df.columns],
+                                      style_cell={'textAlign': 'left'},
+                                      sort_action="native",
+                                      sort_mode="multi"
+                                          ) 
+        else:
+            filter_query = '{Name} = "' +clickData['points'][0]['text'] +'"'
+            print(filter_query)
+            return dash_table.DataTable(table_df.to_dict('records'), 
+                                      [{"name": i, "id": i} for i in table_df.columns],
+                                      style_cell={'textAlign': 'left'},
+                                      sort_action="native",
+                                      sort_mode="multi",
+                                      style_data_conditional=[{
+                                          'if': {
+                                              'filter_query': filter_query,
+                                              'column_id': 'Name'
+                                          },
+                                          'backgroundColor': 'tomato',
+                                          'color': 'white'
                                       },
-                                      'backgroundColor': 'tomato',
-                                      'color': 'white'
-                                  },
-                                      {
-                                      'if': {
-                                          'filter_query': filter_query,
-                                          'column_id': 'Neighbour type'
+                                          {
+                                          'if': {
+                                              'filter_query': filter_query,
+                                              'column_id': 'Neighbour type'
+                                          },
+                                          'backgroundColor': 'tomato',
+                                          'color': 'white'
                                       },
-                                      'backgroundColor': 'tomato',
-                                      'color': 'white'
-                                  },
-                                      {
-                                      'if': {
-                                          'filter_query': filter_query,
-                                          'column_id': 'Point type'
+                                          {
+                                          'if': {
+                                              'filter_query': filter_query,
+                                              'column_id': 'Point type'
+                                          },
+                                          'backgroundColor': 'tomato',
+                                          'color': 'white'
                                       },
-                                      'backgroundColor': 'tomato',
-                                      'color': 'white'
-                                  },
-                                      {
-                                      'if': {
-                                          'filter_query': filter_query,
-                                          'column_id': 'Distance to input'
-                                      },
-                                      'backgroundColor': 'tomato',
-                                      'color': 'white'
-                                  }
-                              ]
-                                      ) 
-
-
-
-
-@app.callback(
-    Output("graph", "figure"),
-    Input("input_select", "value"),
-    Input("distance_type", "value"),
-    Input('neighbour_dropdown','value'),
-    Input('document_dropdown','value'))
-def update_bar_chart(input_option, dist_option, neighbour_options, doc_options):
-    
-    output_df = input_visual_dfs[input_option][0][dist_option]
-    output_df = output_df[output_df['Neighbour type'].isin(neighbour_options)]
-    output_df = output_df[output_df['Point type'].isin(doc_options)]
-    
-    fig = px.scatter(output_df, 
-                     x="X", y="Y", 
-                     text="Name", 
-                     hover_data=['Name','Distance to input'], 
-                     color= 'Neighbour type',
-                     color_discrete_sequence=px.colors.qualitative.Dark24,
-                     symbol = 'Point type'
-                     )
-    fig.update_traces(textposition='top center')
-    fig.update_layout(legend={'title_text':''})
-    fig.update_layout(yaxis_visible=False, yaxis_showticklabels=False,
-                      xaxis_visible=False, xaxis_showticklabels=False)
-    fig.update_layout({
-                    'plot_bgcolor': 'rgba(0, 0, 0, 0.1)',
-                    'legend_bgcolor': 'rgba(0, 0, 0, 0.1)',
-                    'paper_bgcolor': 'rgba(0, 0, 0, 0)',
-                        })
+                                          {
+                                          'if': {
+                                              'filter_query': filter_query,
+                                              'column_id': 'Distance to input'
+                                          },
+                                          'backgroundColor': 'tomato',
+                                          'color': 'white'
+                                      }
+                                  ]
+                                          ) 
     
     
-   
-    return fig
-
-@app.callback(
-    Output("graph", "clickData"),
-    Input("input_select", "value"))
-def rest_clickdata(input_option):
-    return None
-
-
-@app.callback(
-    Output('text-print', 'children'),
-    Input('graph', 'clickData'),
-    Input("input_select", "value"),
-    Input("distance_type", "value"))
-def display_click_data(clickData,input_option, dist_option):
     
-    output_df = input_visual_dfs[input_option][0][dist_option]
     
-    if clickData == None:
-        search_name = "Name: " + output_df.loc[0,'Name']
-        search_type = "Type: " + output_df.loc[0,'Neighbour type']
-        text = [search_name,  html.Br(), search_type,  html.Br(), output_df.loc[0,'Text']]
-    else:
-        search_name = clickData['points'][0]['text']
-        search_type = list(output_df.loc[output_df.index[output_df['Name'] == search_name], 'Neighbour type'])[0]
-        text = list(output_df.loc[output_df['Name'] == search_name, 'Text'])[0]
-        text = ["Name: " + search_name,  html.Br(),"Type: " + search_type,  html.Br(), text]
+    @app.callback(
+        Output("graph", "figure"),
+        Input("input_select", "value"),
+        Input("distance_type", "value"),
+        Input('neighbour_dropdown','value'),
+        Input('document_dropdown','value'))
+    def update_bar_chart(input_option, dist_option, neighbour_options, doc_options):
+        
+        output_df = input_visual_dfs[input_option][0][dist_option]
+        output_df = output_df[output_df['Neighbour type'].isin(neighbour_options)]
+        output_df = output_df[output_df['Point type'].isin(doc_options)]
+        
+        fig = px.scatter(output_df, 
+                         x="X", y="Y", 
+                         text="Name", 
+                         hover_data=['Name','Distance to input'], 
+                         color= 'Neighbour type',
+                         color_discrete_sequence=px.colors.qualitative.Dark24,
+                         symbol = 'Point type'
+                         )
+        fig.update_traces(textposition='top center')
+        fig.update_layout(legend={'title_text':''})
+        fig.update_layout(yaxis_visible=False, yaxis_showticklabels=False,
+                          xaxis_visible=False, xaxis_showticklabels=False)
+        fig.update_layout({
+                        'plot_bgcolor': 'rgba(0, 0, 0, 0.1)',
+                        'legend_bgcolor': 'rgba(0, 0, 0, 0.1)',
+                        'paper_bgcolor': 'rgba(0, 0, 0, 0)',
+                            })
+        
         
        
-    return text
-
-@app.callback(
-    Output('latex_dropdown','options'),
-    Output('latex_dropdown','value'),
-    Input("input_select", "value"),
-    Input("distance_type", "value"))
-
-def init_latex_dropdown(input_option, dist_option):
+        return fig
     
-    columns = list(input_visual_dfs[input_option][0][dist_option].columns)
-
-    return columns, columns    
-
-@app.callback(
-    Output('latex', 'children'),
-    Input("input_select", "value"),
-    Input("distance_type", "value"),
-    Input('neighbour_dropdown','value'),
-    Input('document_dropdown','value'),
-    Input('latex_dropdown','value'))
-def display_latex_code(input_option, dist_option, neighbour_options, doc_options, columns):
-    
-    output_df = input_visual_dfs[input_option][0][dist_option]
-    output_df = output_df[output_df['Neighbour type'].isin(neighbour_options)]
-    output_df = output_df[output_df['Point type'].isin(doc_options)]
-    
-    output_df = output_df[[c for c in output_df.columns if c in columns]]
-    
-    latex_code = output_df.to_latex(index=False,
-                                    caption=(f'{input_option} + {dist_option}'),
-                                    label='tab:add label',
-                                    float_format="%.4f")
-    
-    latex_list = list()
-    for line in latex_code.split("\n"):
-        latex_list.append(line)
-        latex_list.append(html.Br())
-    return latex_list
-
-    
-app.run_server(debug=False)
-
-
-
-
-
-#%% latex export
-if __name__ == "__main__":
-    
-    wmd_bow_1_td_pairs_df = pd.DataFrame(sorted(input_dict['input_min_dist']['wmd_bow']['1. closest'][1]['travel_distance_pairs'], key=lambda tup: tup[2]),
-                                         columns=['Input word','Legal concept word','Distance'])
-
-    print(wmd_bow_1_td_pairs_df.to_latex(index=False,
-                                         caption=('Travel distance pairs of the 1. closets legal concept BOW for the WMD.'),
-                                         label='wmd_bow_1_td_pais',
-                                         float_format="%.4f"))   
-
-    test_latex = input_visual_dfs['En funktionær er en lønmodtager... (Funktionærloven)'][0]['concept_bow_meanvector'].to_latex(index=False,
-                                    caption=(''),
-                                    label='tab:add label',
-                                    float_format="%.4f")
-    test_latex_list = test_latex.split("\n")
+    @app.callback(
+        Output("graph", "clickData"),
+        Input("input_select", "value"))
+    def rest_clickdata(input_option):
+        return None
     
     
+    @app.callback(
+        Output('text-print', 'children'),
+        Input('graph', 'clickData'),
+        Input("input_select", "value"),
+        Input("distance_type", "value"))
+    def display_click_data(clickData,input_option, dist_option):
+        
+        output_df = input_visual_dfs[input_option][0][dist_option]
+        
+        if clickData == None:
+            search_name = "Name: " + output_df.loc[0,'Name']
+            search_type = "Type: " + output_df.loc[0,'Neighbour type']
+            text = [search_name,  html.Br(), search_type,  html.Br(), output_df.loc[0,'Text']]
+        else:
+            search_name = clickData['points'][0]['text']
+            search_type = list(output_df.loc[output_df.index[output_df['Name'] == search_name], 'Neighbour type'])[0]
+            text = list(output_df.loc[output_df['Name'] == search_name, 'Text'])[0]
+            text = ["Name: " + search_name,  html.Br(),"Type: " + search_type,  html.Br(), text]
+            
+           
+        return text
     
+    @app.callback(
+        Output('latex_dropdown','options'),
+        Output('latex_dropdown','value'),
+        Input("input_select", "value"),
+        Input("distance_type", "value"))
+    
+    def init_latex_dropdown(input_option, dist_option):
+        
+        columns = list(input_visual_dfs[input_option][0][dist_option].columns)
+    
+        return columns, columns    
+    
+    @app.callback(
+        Output('latex', 'children'),
+        Input("input_select", "value"),
+        Input("distance_type", "value"),
+        Input('neighbour_dropdown','value'),
+        Input('document_dropdown','value'),
+        Input('latex_dropdown','value'))
+    def display_latex_code(input_option, dist_option, neighbour_options, doc_options, columns):
+        
+        output_df = input_visual_dfs[input_option][0][dist_option]
+        output_df = output_df[output_df['Neighbour type'].isin(neighbour_options)]
+        output_df = output_df[output_df['Point type'].isin(doc_options)]
+        
+        output_df = output_df[[c for c in output_df.columns if c in columns]]
+        
+        latex_code = output_df.to_latex(index=False,
+                                        caption=(f'{input_option} + {dist_option}'),
+                                        label='tab:add label',
+                                        float_format="%.4f")
+        
+        latex_list = list()
+        for line in latex_code.split("\n"):
+            latex_list.append(line)
+            latex_list.append(html.Br())
+        return latex_list
+    
+        
+    app.run_server(debug=False)
+    
+    
+    
+    
+    
+    #%% latex export
+    if __name__ == "__main__":
+        
+        wmd_bow_1_td_pairs_df = pd.DataFrame(sorted(input_dict['input_min_dist']['wmd_bow']['1. closest'][1]['travel_distance_pairs'], key=lambda tup: tup[2]),
+                                             columns=['Input word','Legal concept word','Distance'])
+    
+        print(wmd_bow_1_td_pairs_df.to_latex(index=False,
+                                             caption=('Travel distance pairs of the 1. closets legal concept BOW for the WMD.'),
+                                             label='wmd_bow_1_td_pais',
+                                             float_format="%.4f"))   
+    
+        test_latex = input_visual_dfs['En funktionær er en lønmodtager... (Funktionærloven)'][0]['concept_bow_meanvector'].to_latex(index=False,
+                                        caption=(''),
+                                        label='tab:add label',
+                                        float_format="%.4f")
+        test_latex_list = test_latex.split("\n")
+        
+        
+        
